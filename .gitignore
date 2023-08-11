@@ -1,3 +1,13 @@
+.idea
+*.zip
+*.pdf
+
+cmake-build-debug
+cmake-build-release
+data
+**/doc
+**/docs
+
 # Prerequisites
 *.d
 

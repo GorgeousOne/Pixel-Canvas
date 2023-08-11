@@ -22,7 +22,6 @@ Window::Window(glm::ivec2 const& windowsize)
   std::fill(std::begin(m_keypressed), std::end(m_keypressed), false);
   glfwInit();
   glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
-  glfwWindowHint(GLFW_RESIZABLE, 0);
 
 #ifdef __APPLE__
   glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);

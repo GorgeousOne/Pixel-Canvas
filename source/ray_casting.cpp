@@ -86,18 +86,13 @@ void set_shader_define_value(std::string &shader_str, std::string const define_s
     shader_str.replace(index + define_str.length() + 1, 1, value);
 }
 
-GLuint loadShaders(
-        std::string const &vs,
-        std::string const &fs
-) {
+GLuint loadShaders(std::string const &vs, std::string const &fs) {
     std::string v = readFile(vs);
     std::string f = readFile(fs);
-
     set_shader_define_value(f, "#define TASK", std::to_string(g_task_chosen));
     set_shader_define_value(f, "#define ENABLE_LIGHTING", std::to_string(g_lighting_toggle));
     set_shader_define_value(f, "#define ENABLE_BINARY_SEARCH", std::to_string(g_binary_search_toggle));
     set_shader_define_value(f, "#define USE_GRADIENT_VOLUME", std::to_string(g_gradient_volume_toggle));
-
     return createProgram(v, f);
 }
 
@@ -266,40 +261,18 @@ uint32_t get_1d_index(const glm::ivec3 &idx_3d) {
     return (idx_3d.x + g_vol_dimensions.x * (idx_3d.y + idx_3d.z * g_vol_dimensions.y));
 }
 
-float sample_volume(glm::ivec3 idx) {
-
-    // clamp index
-    idx.x = std::min(idx.x, g_vol_dimensions.x - 1);
-    idx.y = std::min(idx.y, g_vol_dimensions.y - 1);
-    idx.z = std::min(idx.z, g_vol_dimensions.z - 1);
-
-    idx.x = std::max(idx.x, 0);
-    idx.y = std::max(idx.y, 0);
-    idx.z = std::max(idx.z, 0);
-
-    // get 1d index
-    uint32_t idx_1d = get_1d_index(idx);
-
-    // get value
-    return float(g_volume_data[idx_1d]) / 255.f;
-}
-
 void create_gradient_volume_texture(const std::vector<glm::vec3> &gradient_volume) {
     glActiveTexture(GL_TEXTURE2);
     g_gradient_volume_texture = createTexture3D(g_vol_dimensions.x, g_vol_dimensions.y, g_vol_dimensions.z, GL_RGB32F, GL_FLOAT, GL_RGB, (const char *) gradient_volume.data());
 }
 
-
 void load_gradient_volume() {
-
     std::vector<glm::vec3> gradient_volume(g_vol_dimensions.x * g_vol_dimensions.y * g_vol_dimensions.z);
 
     // load in from file
     std::ifstream grad_vol_infile(g_file_string + ".grad", std::ios::binary);
     grad_vol_infile.read(reinterpret_cast<char *>(gradient_volume.data()), gradient_volume.size() * sizeof(glm::vec3));
-
     create_gradient_volume_texture(gradient_volume);
-
 }
 
 void UpdateImGui() {
@@ -382,41 +355,6 @@ void showGUI() {
             ImGui::TreePop();
         }
 
-        // if (ImGui::TreeNode("Simple")){
-        //     ImGui::RadioButton("X-Ray", &g_task_chosen, 11);
-        //     ImGui::RadioButton("Angiogram", &g_task_chosen, 12);
-        //     ImGui::TreePop();
-        // }
-
-        // if (ImGui::TreeNode("Iso-Surface Rendering")){
-        //     ImGui::RadioButton("First-Hit", &g_task_chosen, 13);
-        //     ImGui::RadioButton("Multi-Iso-Surface Compositing", &g_task_chosen, 24);
-        //     ImGui::SliderFloat("Iso Value 2", &g_iso_value_2, 0.0f, 1.0f, "%.8f", 1.0f);
-        //     ImGui::TreePop();
-        // }
-
-        // if (ImGui::TreeNode("Direct Volume Rendering")){
-        //     ImGui::RadioButton("Front-to-Back Compositing", &g_task_chosen, 21);
-        //     ImGui::RadioButton("Adaptive Sampling", &g_task_chosen, 25);
-        //     ImGui::TreePop();
-        // }
-
-        // ImGui::SameLine();
-        // ImGui::Text("Enable Lighting");
-
-        // ImGui::SameLine();
-        // ImGui::Text("Enable Binary Search");
-
-
-        // g_reload_shader ^= ImGui::Checkbox("1", &g_lighting_toggle); ImGui::SameLine();
-        // g_task_chosen == 0 || g_task_chosen == 12 || g_task_chosen == 12 ? ImGui::TextColored(ImVec4(0.2f, 0.2f, 0.2f, 0.5f), "Enable Lighting") : ImGui::Text("Enable Lighting");
-
-        // g_reload_shader ^= ImGui::Checkbox("2", &g_shadow_toggle); ImGui::SameLine();
-        // g_task_chosen == 11 || g_task_chosen == 14 ? ImGui::Text("Enable Shadows") : ImGui::TextColored(ImVec4(0.2f, 0.2f, 0.2f, 0.5f), "Enable Shadows");
-
-        // g_reload_shader ^= ImGui::Checkbox("3", &g_opacity_correction_toggle); ImGui::SameLine();
-        // g_task_chosen == 21 ? ImGui::Text("Opacity Correction") : ImGui::TextColored(ImVec4(0.2f, 0.2f, 0.2f, 0.5f), "Opacity Correction");
-
         if (g_task_chosen != g_task_chosen_old) {
             g_reload_shader = true;
             g_task_chosen_old = g_task_chosen;
@@ -424,8 +362,6 @@ void showGUI() {
     }
 
     if (ImGui::CollapsingHeader("Load Volumes", 0, true, false)) {
-
-
         bool load_volume_1 = false;
         bool load_volume_2 = false;
         bool load_volume_3 = false;
@@ -453,8 +389,6 @@ void showGUI() {
             load_gradient_volume();
         }
     }
-
-
     if (ImGui::CollapsingHeader("Lighting Settings")) {
         ImGui::SliderFloat3("Position Light", &g_light_pos[0], -10.0f, 10.0f);
 
@@ -466,7 +400,6 @@ void showGUI() {
 
 
     }
-
     if (ImGui::CollapsingHeader("Quality Settings")) {
         // ImGui::Text("Interpolation");
         // ImGui::RadioButton("Nearest Neighbour", &g_bilinear_interpolation, 0);
@@ -477,7 +410,6 @@ void showGUI() {
         //ImGui::SliderFloat("sampling factor move", &g_sampling_distance_fact_move, 0.1f, 10.0f, "%.5f", 4.0f);
         // ImGui::SliderFloat("reference sampling factor", &g_sampling_distance_fact_ref, 0.1f, 10.0f, "%.5f", 4.0f);
     }
-
     if (ImGui::CollapsingHeader("Shader", 0, true, true)) {
         static ImVec4 text_color(1.0, 1.0, 1.0, 1.0);
 
@@ -488,12 +420,8 @@ void showGUI() {
             text_color = ImVec4(0.0, 1.0, 0.0, 1.0);
             ImGui::TextColored(text_color, "Shader Ok");
         }
-
-
         ImGui::TextWrapped(g_error_message.c_str());
-
         g_reload_shader ^= ImGui::Button("Reload Shader");
-
     }
 
     if (ImGui::CollapsingHeader("Timing")) {
@@ -507,7 +435,6 @@ void showGUI() {
             min = mid - 5.0f;
             max = mid + 5.0f;
         }
-
         static size_t values_offset = 0;
 
         char buf[50];
@@ -516,7 +443,6 @@ void showGUI() {
 
         ImGui::SameLine();
         ImGui::Checkbox("pause", &g_pause);
-
     }
 
     if (ImGui::CollapsingHeader("Window options")) {
@@ -552,29 +478,21 @@ void showGUI() {
                 }
                 g_win.resize(win_re_size);
             }
-
             ImGui::TreePop();
         }
-
         if (ImGui::TreeNode("Background Color")) {
             ImGui::ColorEdit3("BC", &g_background_color[0]);
             ImGui::TreePop();
         }
-
         if (ImGui::TreeNode("Style Editor")) {
             ImGui::ShowStyleEditor();
             ImGui::TreePop();
         }
-
         if (ImGui::TreeNode("Logging")) {
             ImGui::LogButtons();
             ImGui::TreePop();
         }
     }
-
-    //ImGui::SetWindowFontScale(1.5);
-
-
     ImGui::End();
 
 
@@ -603,7 +521,6 @@ void showGUI() {
             A[i] = color_con[i * 4 + 3];
         }
     }
-
     ImGui::PlotLines("", &A.front(), (int) A.size(), (int) 0, "", 0.0, 255.0, ImVec2(0, 70));
 
     g_transfer_function_pos.x = ImGui::GetItemBoxMin().x;
@@ -640,21 +557,16 @@ void showGUI() {
     }
 
     if (ImGui::CollapsingHeader("Manipulate Values")) {
-
-
         Transfer_function::container_type con = g_transfer_fun.get_piecewise_container();
-
         bool delete_entry_from_tf = false;
-
         static std::vector<int> g_c_data_value;
 
-        if (g_c_data_value.size() != con.size())
+        if (g_c_data_value.size() != con.size()) {
             g_c_data_value.resize(con.size());
-
+        }
         int i = 0;
 
         for (Transfer_function::container_type::iterator c = con.begin(); c != con.end(); ++c) {
-
             int c_data_value = c->first;
             glm::vec4 c_color_value = c->second;
 
@@ -711,10 +623,7 @@ void showGUI() {
             ++i;
         }
     }
-
-
     if (ImGui::CollapsingHeader("Transfer Function - Save/Load", 0, true, false)) {
-
         ImGui::Text("Transferfunctions");
         bool load_tf_1 = false;
         bool load_tf_2 = false;
@@ -755,9 +664,7 @@ void showGUI() {
             for (Transfer_function::container_type::iterator c = con.begin(); c != con.end(); ++c) {
                 save_vect.push_back(*c);
             }
-
             std::ofstream tf_file;
-
             if (save_tf_1) { tf_file.open("TF1.tf", std::ios::out | std::ofstream::binary); }
             if (save_tf_2) { tf_file.open("TF2.tf", std::ios::out | std::ofstream::binary); }
             if (save_tf_3) { tf_file.open("TF3.tf", std::ios::out | std::ofstream::binary); }
@@ -769,7 +676,6 @@ void showGUI() {
             tf_file.write((char *) &save_vect[0], sizeof(Transfer_function::element_type) * save_vect.size());
             tf_file.close();
         }
-
         if (load_tf_1 || load_tf_2 || load_tf_3 || load_tf_4 || load_tf_5 || load_tf_6) {
             Transfer_function::container_type con = g_transfer_fun.get_piecewise_container();
             std::vector<Transfer_function::element_type> load_vect;
@@ -782,7 +688,6 @@ void showGUI() {
             if (load_tf_4) { tf_file.open("TF4.tf", std::ios::in | std::ifstream::binary); }
             if (load_tf_5) { tf_file.open("TF5.tf", std::ios::in | std::ifstream::binary); }
             if (load_tf_6) { tf_file.open("TF6.tf", std::ios::in | std::ifstream::binary); }
-
 
             if (tf_file.good()) {
                 tf_file.seekg(0, tf_file.end);
@@ -800,16 +705,100 @@ void showGUI() {
                     g_transfer_fun.add(c->first, c->second);
                 }
             }
-
             tf_file.close();
+        }
+    }
+    ImGui::End();
+#endif
+}
 
+void handleUIInput() {
+    if (!first_frame > 0.0) {
+
+        // exit window with escape
+        if (ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) {
+            g_win.stop();
         }
 
+        if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
+            g_reload_shader = true;
+        }
+
+        if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_MIDDLE) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_RIGHT)) {
+        }
     }
+    if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
+        if (g_reload_shader_pressed != true) {
+            g_reload_shader = true;
+            g_reload_shader_pressed = true;
+        } else {
+            g_reload_shader = false;
+        }
+    } else {
+        g_reload_shader = false;
+        g_reload_shader_pressed = false;
+    }
+}
 
-    ImGui::End();
+void reloadShaders() {
+    GLuint newProgram(0);
+    try {
+        //std::cout << "Reload shaders" << std::endl;
+        newProgram = loadShaders(g_file_vertex_shader, g_file_fragment_shader);
+        g_error_message = "";
+    }
+    catch (std::logic_error &e) {
+        //std::cerr << e.what() << std::endl;
+        std::stringstream ss;
+        ss << e.what() << std::endl;
+        g_error_message = ss.str();
+        g_reload_shader_error = true;
+        newProgram = 0;
+    }
+    if (0 != newProgram) {
+        glDeleteProgram(g_volume_program);
+        g_volume_program = newProgram;
+        g_reload_shader_error = false;
 
-#endif
+    } else {
+        g_reload_shader_error = true;
+    }
+}
+
+void uploadUniforms(glm::vec3 const & camera_location, float sampling_fact, glm::mat4 projection, glm::mat4 model_view) {
+    glUniform1i(glGetUniformLocation(g_volume_program, "volume_texture"), 0);
+    glUniform1i(glGetUniformLocation(g_volume_program, "transfer_func_texture"), 1);
+    glUniform1i(glGetUniformLocation(g_volume_program, "gradient_volume_texture"), 2);
+
+    glUniform3fv(glGetUniformLocation(g_volume_program, "camera_location"), 1, glm::value_ptr(camera_location));
+    glUniform1f(glGetUniformLocation(g_volume_program, "sampling_distance"), g_sampling_distance * sampling_fact);
+    // glUniform1f(glGetUniformLocation(g_volume_program, "sampling_distance_ref"), g_sampling_distance_fact_ref);
+    glUniform1f(glGetUniformLocation(g_volume_program, "iso_value"), g_iso_value);
+    glUniform3fv(glGetUniformLocation(g_volume_program, "max_bounds"), 1, glm::value_ptr(g_max_volume_bounds));
+    glUniform3iv(glGetUniformLocation(g_volume_program, "volume_dimensions"), 1, glm::value_ptr(g_vol_dimensions));
+    glUniform3fv(glGetUniformLocation(g_volume_program, "light_position"), 1, glm::value_ptr(g_light_pos));
+    glUniform3fv(glGetUniformLocation(g_volume_program, "light_ambient_color"), 1, glm::value_ptr(g_ambient_light_color));
+    glUniform3fv(glGetUniformLocation(g_volume_program, "light_diffuse_color"), 1, glm::value_ptr(g_diffuse_light_color));
+    glUniform3fv(glGetUniformLocation(g_volume_program, "light_specular_color"), 1, glm::value_ptr(g_specula_light_color));
+    glUniform1f(glGetUniformLocation(g_volume_program, "light_shininess"), g_ref_coef);
+
+    glUniformMatrix4fv(glGetUniformLocation(g_volume_program, "Projection"), 1, GL_FALSE, glm::value_ptr(projection));
+    glUniformMatrix4fv(glGetUniformLocation(g_volume_program, "Modelview"), 1, GL_FALSE, glm::value_ptr(model_view));
+}
+
+void renderGUI() {
+    //IMGUI ROUTINE begin
+    ImGuiIO &io = ImGui::GetIO();
+    io.MouseWheel = 0;
+    mousePressed[0] = mousePressed[1] = false;
+    glfwPollEvents();
+    UpdateImGui();
+    showGUI();
+
+    // Rendering
+    glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
+    ImGui::Render();
+    //IMGUI ROUTINE end
 }
 
 int main(int argc, char *argv[]) {
@@ -859,72 +848,20 @@ int main(int argc, char *argv[]) {
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)
     while (!g_win.shouldClose()) {
         float sampling_fact = g_sampling_distance_fact;
-        if (!first_frame > 0.0) {
 
-            // exit window with escape
-            if (ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) {
-                g_win.stop();
-            }
-
-            if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
-                g_reload_shader = true;
-            }
-
-            if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_MIDDLE) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_RIGHT)) {
-                sampling_fact = g_sampling_distance_fact_move;
-            }
-
-        }
         /// reload shader if key R ist pressed
         if (g_reload_shader) {
-
-            GLuint newProgram(0);
-            try {
-                //std::cout << "Reload shaders" << std::endl;
-                newProgram = loadShaders(g_file_vertex_shader, g_file_fragment_shader);
-                g_error_message = "";
-            }
-            catch (std::logic_error &e) {
-                //std::cerr << e.what() << std::endl;
-                std::stringstream ss;
-                ss << e.what() << std::endl;
-                g_error_message = ss.str();
-                g_reload_shader_error = true;
-                newProgram = 0;
-            }
-            if (0 != newProgram) {
-                glDeleteProgram(g_volume_program);
-                g_volume_program = newProgram;
-                g_reload_shader_error = false;
-
-            } else {
-                g_reload_shader_error = true;
-            }
+            reloadShaders();
         }
-
-        if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
-            if (g_reload_shader_pressed != true) {
-                g_reload_shader = true;
-                g_reload_shader_pressed = true;
-            } else {
-                g_reload_shader = false;
-            }
-        } else {
-            g_reload_shader = false;
-            g_reload_shader_pressed = false;
-        }
+        handleUIInput();
 
 
         if (g_transfer_dirty && !first_frame) {
             g_transfer_dirty = false;
-
             static unsigned byte_size = 255;
-
             image_data_type color_con = g_transfer_fun.get_RGBA_transfer_function_buffer();
-
             glActiveTexture(GL_TEXTURE1);
             updateTexture2D(g_transfer_texture, 255u, 1u, (char *) &g_transfer_fun.get_RGBA_transfer_function_buffer()[0]);
-
         }
 
         if (g_bilinear_interpolation) {
@@ -956,25 +893,24 @@ int main(int argc, char *argv[]) {
 
         glm::mat4 turntable_matrix = manipulator.matrix();
 
+        //rotate cube if not ui clicked
         if (!g_over_gui) {
             turntable_matrix = manipulator.matrix(g_win);
         }
 
-        glm::mat4 model_view = view
-                               * glm::translate(translate_pos)
-                               * turntable_matrix
-                               // rotate head upright
-                               * glm::rotate(0.5f * float(M_PI), glm::vec3(0.0f, 1.0f, 0.0f))
-                               * glm::rotate(0.5f * float(M_PI), glm::vec3(1.0f, 0.0f, 0.0f))
-                               * glm::translate(translate_rot);
+        glm::mat4 model_view =
+                view
+                * glm::translate(translate_pos)
+                * turntable_matrix
+                // rotate head upright
+                * glm::rotate(0.5f * float(M_PI), glm::vec3(0.0f, 1.0f, 0.0f))
+                * glm::rotate(0.5f * float(M_PI), glm::vec3(1.0f, 0.0f, 0.0f))
+                * glm::translate(translate_rot);
 
 
         glm::vec4 camera_translate = glm::column(glm::inverse(model_view), 3);
         glm::vec3 camera_location = glm::vec3(camera_translate.x, camera_translate.y, camera_translate.z);
-
         camera_location /= glm::vec3(camera_translate.w);
-
-        glm::vec4 light_location = glm::vec4(g_light_pos, 1.0f);
 
         glBindTexture(GL_TEXTURE_2D, g_transfer_texture);
 
@@ -982,50 +918,13 @@ int main(int argc, char *argv[]) {
         glCullFace(GL_BACK);
 
         glUseProgram(g_volume_program);
+        uploadUniforms(camera_location, sampling_fact, projection, model_view);
 
-        glUniform1i(glGetUniformLocation(g_volume_program, "volume_texture"), 0);
-        glUniform1i(glGetUniformLocation(g_volume_program, "transfer_func_texture"), 1);
-        glUniform1i(glGetUniformLocation(g_volume_program, "gradient_volume_texture"), 2);
-
-        glUniform3fv(glGetUniformLocation(g_volume_program, "camera_location"), 1,
-                     glm::value_ptr(camera_location));
-        glUniform1f(glGetUniformLocation(g_volume_program, "sampling_distance"), g_sampling_distance * sampling_fact);
-        // glUniform1f(glGetUniformLocation(g_volume_program, "sampling_distance_ref"), g_sampling_distance_fact_ref);
-        glUniform1f(glGetUniformLocation(g_volume_program, "iso_value"), g_iso_value);
-        glUniform3fv(glGetUniformLocation(g_volume_program, "max_bounds"), 1,
-                     glm::value_ptr(g_max_volume_bounds));
-        glUniform3iv(glGetUniformLocation(g_volume_program, "volume_dimensions"), 1,
-                     glm::value_ptr(g_vol_dimensions));
-        glUniform3fv(glGetUniformLocation(g_volume_program, "light_position"), 1,
-                     glm::value_ptr(g_light_pos));
-        glUniform3fv(glGetUniformLocation(g_volume_program, "light_ambient_color"), 1,
-                     glm::value_ptr(g_ambient_light_color));
-        glUniform3fv(glGetUniformLocation(g_volume_program, "light_diffuse_color"), 1,
-                     glm::value_ptr(g_diffuse_light_color));
-        glUniform3fv(glGetUniformLocation(g_volume_program, "light_specular_color"), 1,
-                     glm::value_ptr(g_specula_light_color));
-        glUniform1f(glGetUniformLocation(g_volume_program, "light_shininess"), g_ref_coef);
-
-        glUniformMatrix4fv(glGetUniformLocation(g_volume_program, "Projection"), 1, GL_FALSE,
-                           glm::value_ptr(projection));
-        glUniformMatrix4fv(glGetUniformLocation(g_volume_program, "Modelview"), 1, GL_FALSE,
-                           glm::value_ptr(model_view));
-        if (!g_pause)
+        if (!g_pause) {
             g_cube.draw();
+        }
         glUseProgram(0);
-
-        //IMGUI ROUTINE begin
-        ImGuiIO &io = ImGui::GetIO();
-        io.MouseWheel = 0;
-        mousePressed[0] = mousePressed[1] = false;
-        glfwPollEvents();
-        UpdateImGui();
-        showGUI();
-
-        // Rendering
-        glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
-        ImGui::Render();
-        //IMGUI ROUTINE end
+        renderGUI();
 
         if (g_show_transfer_function)
             g_transfer_fun.draw_texture(g_transfer_function_pos, g_transfer_function_size, g_transfer_texture);
@@ -1037,6 +936,5 @@ int main(int argc, char *argv[]) {
 
     //ImGui::Shutdown();
     ImGui_ImplGlfwGL3_Shutdown();
-
     return 0;
 }

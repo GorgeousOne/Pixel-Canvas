@@ -80,8 +80,8 @@ bool g_binary_search_toggle = false;
 bool g_gradient_volume_toggle = true;
 
 
-const std::string g_file_vertex_shader("../../../source/shader/ray_casting.vert");
-const std::string g_file_fragment_shader("../../../source/shader/ray_casting.frag");
+const std::string g_file_vertex_shader("../../../source/shader/image_display.vert");
+const std::string g_file_fragment_shader("../../../source/shader/image_display.frag");
 
 void set_shader_define_value(std::string &shader_str, std::string const define_str, std::string const value) {
     int index = (int) shader_str.find(define_str);
@@ -91,10 +91,10 @@ void set_shader_define_value(std::string &shader_str, std::string const define_s
 GLuint loadShaders(std::string const &vs, std::string const &fs) {
     std::string v = readFile(vs);
     std::string f = readFile(fs);
-    set_shader_define_value(f, "#define TASK", std::to_string(g_task_chosen));
-    set_shader_define_value(f, "#define ENABLE_LIGHTING", std::to_string(g_lighting_toggle));
-    set_shader_define_value(f, "#define ENABLE_BINARY_SEARCH", std::to_string(g_binary_search_toggle));
-    set_shader_define_value(f, "#define USE_GRADIENT_VOLUME", std::to_string(g_gradient_volume_toggle));
+//    set_shader_define_value(f, "#define TASK", std::to_string(g_task_chosen));
+//    set_shader_define_value(f, "#define ENABLE_LIGHTING", std::to_string(g_lighting_toggle));
+//    set_shader_define_value(f, "#define ENABLE_BINARY_SEARCH", std::to_string(g_binary_search_toggle));
+//    set_shader_define_value(f, "#define USE_GRADIENT_VOLUME", std::to_string(g_gradient_volume_toggle));
     return createProgram(v, f);
 }
 
@@ -128,7 +128,7 @@ glm::ivec2 g_window_res = glm::ivec2(1280, 720);
 Window g_win(g_window_res);
 
 // Volume Rendering GLSL Program
-GLuint g_volume_program(0);
+GLuint shaderProgram(0);
 std::string g_error_message;
 bool g_reload_shader_error = false;
 
@@ -496,222 +496,6 @@ void showGUI() {
         }
     }
     ImGui::End();
-
-
-#if SHOW_TRANSFER_FUNCTION_WINDOW
-    ImGui::SetNextWindowPos(ImVec2(450, 50), ImGuiSetCond_FirstUseEver);
-
-    g_show_transfer_function = ImGui::Begin("Transfer Function Window", &g_show_transfer_function_in_window, ImVec2(300, 500));
-
-    g_transfer_function_pos.x = ImGui::GetItemBoxMin().x;
-    g_transfer_function_pos.y = ImGui::GetItemBoxMin().y;
-
-    g_transfer_function_size.x = ImGui::GetItemBoxMax().x - ImGui::GetItemBoxMin().x;
-    g_transfer_function_size.y = ImGui::GetItemBoxMax().y - ImGui::GetItemBoxMin().y;
-
-    static unsigned byte_size = 255;
-
-    static ImVector<float> A;
-    if (A.empty()) { A.resize(byte_size); }
-
-    if (g_redraw_tf) {
-        g_redraw_tf = false;
-
-        image_data_type color_con = g_transfer_fun.get_RGBA_transfer_function_buffer();
-
-        for (unsigned i = 0; i != byte_size; ++i) {
-            A[i] = color_con[i * 4 + 3];
-        }
-    }
-    ImGui::PlotLines("", &A.front(), (int) A.size(), (int) 0, "", 0.0, 255.0, ImVec2(0, 70));
-
-    g_transfer_function_pos.x = ImGui::GetItemBoxMin().x;
-    g_transfer_function_pos.y = ImGui::GetIO().DisplaySize.y - ImGui::GetItemBoxMin().y - 70;
-
-    g_transfer_function_size.x = ImGui::GetItemBoxMax().x - ImGui::GetItemBoxMin().x;
-    g_transfer_function_size.y = ImGui::GetItemBoxMax().y - ImGui::GetItemBoxMin().y;
-
-    ImGui::SameLine();
-    ImGui::Text("Color:RGB Plot: Alpha");
-
-    static int data_value = 0;
-    ImGui::SliderInt("Data Value", &data_value, 0, 255);
-    static float col[4] = {0.4f, 0.7f, 0.0f, 0.5f};
-    ImGui::ColorEdit4("color", col);
-    bool add_entry_to_tf = false;
-    add_entry_to_tf ^= ImGui::Button("Add entry");
-    ImGui::SameLine();
-
-    bool reset_tf = false;
-    reset_tf ^= ImGui::Button("Reset");
-
-    if (reset_tf) {
-        g_transfer_fun.reset();
-        g_transfer_dirty = true;
-        g_redraw_tf = true;
-    }
-
-    if (add_entry_to_tf) {
-        g_current_tf_data_value = data_value;
-        g_transfer_fun.add((unsigned) data_value, glm::vec4(col[0], col[1], col[2], col[3]));
-        g_transfer_dirty = true;
-        g_redraw_tf = true;
-    }
-
-    if (ImGui::CollapsingHeader("Manipulate Values")) {
-        Transfer_function::container_type con = g_transfer_fun.get_piecewise_container();
-        bool delete_entry_from_tf = false;
-        static std::vector<int> g_c_data_value;
-
-        if (g_c_data_value.size() != con.size()) {
-            g_c_data_value.resize(con.size());
-        }
-        int i = 0;
-
-        for (Transfer_function::container_type::iterator c = con.begin(); c != con.end(); ++c) {
-            int c_data_value = c->first;
-            glm::vec4 c_color_value = c->second;
-
-            g_c_data_value[i] = c_data_value;
-
-            std::stringstream ss;
-            if (c->first < 10)
-                ss << c->first << "  ";
-            else if (c->first < 100)
-                ss << c->first << " ";
-            else
-                ss << c->first;
-
-            bool change_value = false;
-            change_value ^= ImGui::SliderInt(std::to_string(i).c_str(), &g_c_data_value[i], 0, 255);
-            ImGui::SameLine();
-
-            if (change_value) {
-                if (con.find(g_c_data_value[i]) == con.end()) {
-                    g_transfer_fun.remove(c_data_value);
-                    g_transfer_fun.add((unsigned) g_c_data_value[i], c_color_value);
-                    g_current_tf_data_value = g_c_data_value[i];
-                    g_transfer_dirty = true;
-                    g_redraw_tf = true;
-                }
-            }
-
-            //delete
-            bool delete_entry_from_tf = false;
-            delete_entry_from_tf ^= ImGui::Button(std::string("Delete: ").append(ss.str()).c_str());
-
-            if (delete_entry_from_tf) {
-                g_current_tf_data_value = c_data_value;
-                g_transfer_fun.remove(g_current_tf_data_value);
-                g_transfer_dirty = true;
-                g_redraw_tf = true;
-            }
-
-            static float n_col[4] = {0.4f, 0.7f, 0.0f, 0.5f};
-            memcpy(&n_col, &c_color_value, sizeof(float) * 4);
-
-            bool change_color = false;
-            change_color ^= ImGui::ColorEdit4(ss.str().c_str(), n_col);
-
-            if (change_color) {
-                g_transfer_fun.add((unsigned) g_c_data_value[i], glm::vec4(n_col[0], n_col[1], n_col[2], n_col[3]));
-                g_current_tf_data_value = g_c_data_value[i];
-                g_transfer_dirty = true;
-                g_redraw_tf = true;
-            }
-
-            ImGui::Separator();
-
-            ++i;
-        }
-    }
-    if (ImGui::CollapsingHeader("Transfer Function - Save/Load", 0, true, false)) {
-        ImGui::Text("Transferfunctions");
-        bool load_tf_1 = false;
-        bool load_tf_2 = false;
-        bool load_tf_3 = false;
-        bool load_tf_4 = false;
-        bool load_tf_5 = false;
-        bool load_tf_6 = false;
-        bool save_tf_1 = false;
-        bool save_tf_2 = false;
-        bool save_tf_3 = false;
-        bool save_tf_4 = false;
-        bool save_tf_5 = false;
-        bool save_tf_6 = false;
-
-        save_tf_1 ^= ImGui::Button("Save TF1");
-        ImGui::SameLine();
-        load_tf_1 ^= ImGui::Button("Load TF1");
-        save_tf_2 ^= ImGui::Button("Save TF2");
-        ImGui::SameLine();
-        load_tf_2 ^= ImGui::Button("Load TF2");
-        save_tf_3 ^= ImGui::Button("Save TF3");
-        ImGui::SameLine();
-        load_tf_3 ^= ImGui::Button("Load TF3");
-        save_tf_4 ^= ImGui::Button("Save TF4");
-        ImGui::SameLine();
-        load_tf_4 ^= ImGui::Button("Load TF4");
-        save_tf_5 ^= ImGui::Button("Save TF5");
-        ImGui::SameLine();
-        load_tf_5 ^= ImGui::Button("Load TF5");
-        save_tf_6 ^= ImGui::Button("Save TF6");
-        ImGui::SameLine();
-        load_tf_6 ^= ImGui::Button("Load TF6");
-
-        if (save_tf_1 || save_tf_2 || save_tf_3 || save_tf_4 || save_tf_5 || save_tf_6) {
-            Transfer_function::container_type con = g_transfer_fun.get_piecewise_container();
-            std::vector<Transfer_function::element_type> save_vect;
-
-            for (Transfer_function::container_type::iterator c = con.begin(); c != con.end(); ++c) {
-                save_vect.push_back(*c);
-            }
-            std::ofstream tf_file;
-            if (save_tf_1) { tf_file.open("TF1.tf", std::ios::out | std::ofstream::binary); }
-            if (save_tf_2) { tf_file.open("TF2.tf", std::ios::out | std::ofstream::binary); }
-            if (save_tf_3) { tf_file.open("TF3.tf", std::ios::out | std::ofstream::binary); }
-            if (save_tf_4) { tf_file.open("TF4.tf", std::ios::out | std::ofstream::binary); }
-            if (save_tf_5) { tf_file.open("TF5.tf", std::ios::out | std::ofstream::binary); }
-            if (save_tf_6) { tf_file.open("TF6.tf", std::ios::out | std::ofstream::binary); }
-
-            //std::copy(save_vect.begin(), save_vect.end(), std::ostreambuf_iterator<char>(tf_file));
-            tf_file.write((char *) &save_vect[0], sizeof(Transfer_function::element_type) * save_vect.size());
-            tf_file.close();
-        }
-        if (load_tf_1 || load_tf_2 || load_tf_3 || load_tf_4 || load_tf_5 || load_tf_6) {
-            Transfer_function::container_type con = g_transfer_fun.get_piecewise_container();
-            std::vector<Transfer_function::element_type> load_vect;
-
-            std::ifstream tf_file;
-
-            if (load_tf_1) { tf_file.open("TF1.tf", std::ios::in | std::ifstream::binary); }
-            if (load_tf_2) { tf_file.open("TF2.tf", std::ios::in | std::ifstream::binary); }
-            if (load_tf_3) { tf_file.open("TF3.tf", std::ios::in | std::ifstream::binary); }
-            if (load_tf_4) { tf_file.open("TF4.tf", std::ios::in | std::ifstream::binary); }
-            if (load_tf_5) { tf_file.open("TF5.tf", std::ios::in | std::ifstream::binary); }
-            if (load_tf_6) { tf_file.open("TF6.tf", std::ios::in | std::ifstream::binary); }
-
-            if (tf_file.good()) {
-                tf_file.seekg(0, tf_file.end);
-
-                size_t size = tf_file.tellg();
-                unsigned elements = (int) size / (unsigned) sizeof(Transfer_function::element_type);
-                tf_file.seekg(0);
-
-                load_vect.resize(elements);
-                tf_file.read((char *) &load_vect[0], size);
-
-                g_transfer_fun.reset();
-                g_transfer_dirty = true;
-                for (std::vector<Transfer_function::element_type>::iterator c = load_vect.begin(); c != load_vect.end(); ++c) {
-                    g_transfer_fun.add(c->first, c->second);
-                }
-            }
-            tf_file.close();
-        }
-    }
-    ImGui::End();
-#endif
 }
 
 void handleUIInput() {
@@ -730,7 +514,7 @@ void handleUIInput() {
         }
     }
     if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
-        if (g_reload_shader_pressed != true) {
+        if (!g_reload_shader_pressed) {
             g_reload_shader = true;
             g_reload_shader_pressed = true;
         } else {
@@ -758,8 +542,8 @@ void reloadShaders() {
         newProgram = 0;
     }
     if (0 != newProgram) {
-        glDeleteProgram(g_volume_program);
-        g_volume_program = newProgram;
+        glDeleteProgram(shaderProgram);
+        shaderProgram = newProgram;
         g_reload_shader_error = false;
 
     } else {
@@ -768,24 +552,24 @@ void reloadShaders() {
 }
 
 void uploadUniforms(glm::vec3 const & camera_location, float sampling_fact, glm::mat4 projection, glm::mat4 model_view) {
-    glUniform1i(glGetUniformLocation(g_volume_program, "volume_texture"), 0);
-    glUniform1i(glGetUniformLocation(g_volume_program, "transfer_func_texture"), 1);
-    glUniform1i(glGetUniformLocation(g_volume_program, "gradient_volume_texture"), 2);
+    glUniform1i(glGetUniformLocation(shaderProgram, "volume_texture"), 0);
+    glUniform1i(glGetUniformLocation(shaderProgram, "transfer_func_texture"), 1);
+    glUniform1i(glGetUniformLocation(shaderProgram, "gradient_volume_texture"), 2);
 
-    glUniform3fv(glGetUniformLocation(g_volume_program, "camera_location"), 1, glm::value_ptr(camera_location));
-    glUniform1f(glGetUniformLocation(g_volume_program, "sampling_distance"), g_sampling_distance * sampling_fact);
+    glUniform3fv(glGetUniformLocation(shaderProgram, "camera_location"), 1, glm::value_ptr(camera_location));
+    glUniform1f(glGetUniformLocation(shaderProgram, "sampling_distance"), g_sampling_distance * sampling_fact);
     // glUniform1f(glGetUniformLocation(g_volume_program, "sampling_distance_ref"), g_sampling_distance_fact_ref);
-    glUniform1f(glGetUniformLocation(g_volume_program, "iso_value"), g_iso_value);
-    glUniform3fv(glGetUniformLocation(g_volume_program, "max_bounds"), 1, glm::value_ptr(g_max_volume_bounds));
-    glUniform3iv(glGetUniformLocation(g_volume_program, "volume_dimensions"), 1, glm::value_ptr(g_vol_dimensions));
-    glUniform3fv(glGetUniformLocation(g_volume_program, "light_position"), 1, glm::value_ptr(g_light_pos));
-    glUniform3fv(glGetUniformLocation(g_volume_program, "light_ambient_color"), 1, glm::value_ptr(g_ambient_light_color));
-    glUniform3fv(glGetUniformLocation(g_volume_program, "light_diffuse_color"), 1, glm::value_ptr(g_diffuse_light_color));
-    glUniform3fv(glGetUniformLocation(g_volume_program, "light_specular_color"), 1, glm::value_ptr(g_specula_light_color));
-    glUniform1f(glGetUniformLocation(g_volume_program, "light_shininess"), g_ref_coef);
+    glUniform1f(glGetUniformLocation(shaderProgram, "iso_value"), g_iso_value);
+    glUniform3fv(glGetUniformLocation(shaderProgram, "max_bounds"), 1, glm::value_ptr(g_max_volume_bounds));
+    glUniform3iv(glGetUniformLocation(shaderProgram, "volume_dimensions"), 1, glm::value_ptr(g_vol_dimensions));
+    glUniform3fv(glGetUniformLocation(shaderProgram, "light_position"), 1, glm::value_ptr(g_light_pos));
+    glUniform3fv(glGetUniformLocation(shaderProgram, "light_ambient_color"), 1, glm::value_ptr(g_ambient_light_color));
+    glUniform3fv(glGetUniformLocation(shaderProgram, "light_diffuse_color"), 1, glm::value_ptr(g_diffuse_light_color));
+    glUniform3fv(glGetUniformLocation(shaderProgram, "light_specular_color"), 1, glm::value_ptr(g_specula_light_color));
+    glUniform1f(glGetUniformLocation(shaderProgram, "light_shininess"), g_ref_coef);
 
-    glUniformMatrix4fv(glGetUniformLocation(g_volume_program, "Projection"), 1, GL_FALSE, glm::value_ptr(projection));
-    glUniformMatrix4fv(glGetUniformLocation(g_volume_program, "Modelview"), 1, GL_FALSE, glm::value_ptr(model_view));
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "Projection"), 1, GL_FALSE, glm::value_ptr(projection));
+    glUniformMatrix4fv(glGetUniformLocation(shaderProgram, "Modelview"), 1, GL_FALSE, glm::value_ptr(model_view));
 }
 
 void renderGUI() {
@@ -803,37 +587,48 @@ void renderGUI() {
     //IMGUI ROUTINE end
 }
 
+struct Model {
+    GLuint vao;
+    GLuint vbo;
+};
+
+Model createQuad() {
+    // Set up vertex data
+    Model model;
+    GLfloat vertices[] = {
+            // Positions        // Texture Coords
+            -0.5f,  0.5f,       0.0f, 1.0f,
+            0.5f,  0.5f,       1.0f, 1.0f,
+            0.5f, -0.5f,       1.0f, 0.0f,
+            -0.5f, -0.5f,       0.0f, 0.0f
+    };
+
+    glGenVertexArrays(1, &model.vao);
+    glGenBuffers(1, &model.vbo);
+
+    glBindVertexArray(model.vao);
+    glBindBuffer(GL_ARRAY_BUFFER, model.vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+    return model;
+}
+
+
 int main(int argc, char *argv[]) {
     //g_win = Window(g_window_res);
     //InitImGui();
     ImGui_ImplGlfwGL3_Init(g_win.getGLFWwindow(), true);
 
-    // initialize the transfer function
-
-    // first clear possible old values
-    g_transfer_fun.reset();
-
-    // the add_stop method takes:
-    //  - unsigned char or float - data value     (0.0 .. 1.0) or (0..255)
-    //  - vec4f         - color and alpha value   (0.0 .. 1.0) per channel
-    g_transfer_fun.add(0.0f, glm::vec4(0.0, 0.0, 0.0, 0.0));
-    g_transfer_fun.add(1.0f, glm::vec4(1.0, 1.0, 1.0, 1.0));
-    g_transfer_dirty = true;
-
-
-    // init and upload volume texture
-    bool check = read_volume();
-
-    load_gradient_volume();
-
-    // init and upload transfer function texture
-    glActiveTexture(GL_TEXTURE1);
-    g_transfer_texture = createTexture2D(255u, 1u, (char *) &g_transfer_fun.get_RGBA_transfer_function_buffer()[0]);
-
     // loading actual raytracing shader code (volume.vert, volume.frag)
     // edit volume.frag to define the result of our volume raycaster
     try {
-        g_volume_program = loadShaders(g_file_vertex_shader, g_file_fragment_shader);
+        shaderProgram = loadShaders(g_file_vertex_shader, g_file_fragment_shader);
     }
     catch (std::logic_error &e) {
         //std::cerr << e.what() << std::endl;
@@ -843,15 +638,13 @@ int main(int argc, char *argv[]) {
         g_reload_shader_error = true;
     }
 
-    // init object manipulator (turntable)
-    Manipulator manipulator;
-
-    GLuint tex = texture_loader::uploadTexture("C:/Users/Fred Feuerpferd/Pictures/selfie.png", false);
+    Texture tex = texture_loader::uploadTexture("C:/Users/Fred Feuerpferd/Pictures/jana+dennis.png");
+    Model canvas = createQuad();
+    glm::vec2 canvasOffset{};
 
     // manage keys here
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)
     while (!g_win.shouldClose()) {
-        float sampling_fact = g_sampling_distance_fact;
 
         /// reload shader if key R ist pressed
         if (g_reload_shader) {
@@ -860,80 +653,35 @@ int main(int argc, char *argv[]) {
         handleUIInput();
 
 
-        if (g_transfer_dirty && !first_frame) {
-            g_transfer_dirty = false;
-            static unsigned byte_size = 255;
-            image_data_type color_con = g_transfer_fun.get_RGBA_transfer_function_buffer();
-            glActiveTexture(GL_TEXTURE1);
-            updateTexture2D(g_transfer_texture, 255u, 1u, (char *) &g_transfer_fun.get_RGBA_transfer_function_buffer()[0]);
-        }
-
-        if (g_bilinear_interpolation) {
-            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        } else {
-            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-        }
-
         glm::ivec2 size = g_win.windowSize();
         glViewport(0, 0, size.x, size.y);
         glClearColor(g_background_color.x, g_background_color.y, g_background_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        float fovy = 45.0f;
         float aspect = (float) size.x / (float) size.y;
-        float zNear = 0.025f, zFar = 10.0f;
-        glm::mat4 projection = glm::perspective(fovy, aspect, zNear, zFar);
-
-        glm::vec3 translate_rot = g_max_volume_bounds * glm::vec3(-0.5f, -0.5f, -0.5f);
-        glm::vec3 translate_pos = g_max_volume_bounds * glm::vec3(+0.5f, -0.0f, -0.0f);
-
-        glm::vec3 eye = glm::vec3(0.0f, 0.0f, 1.5f);
-        glm::vec3 target = glm::vec3(0.0f);
-        glm::vec3 up(0.0f, 1.0f, 0.0f);
-
-        glm::mat4 view = glm::lookAt(eye, target, up);
-
-        glm::mat4 turntable_matrix = manipulator.matrix();
 
         //rotate cube if not ui clicked
         if (!g_over_gui) {
-            turntable_matrix = manipulator.matrix(g_win);
+            //TODO move canvas
         }
+        //render canvas
+        glBindTexture(GL_TEXTURE_2D, tex.handle);
 
-        glm::mat4 model_view =
-                view
-                * glm::translate(translate_pos)
-                * turntable_matrix
-                // rotate head upright
-                * glm::rotate(0.5f * float(M_PI), glm::vec3(0.0f, 1.0f, 0.0f))
-                * glm::rotate(0.5f * float(M_PI), glm::vec3(1.0f, 0.0f, 0.0f))
-                * glm::translate(translate_rot);
+        glUseProgram(shaderProgram);
+        glm::mat4 modelMatrix = glm::mat4(1.0f);
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(canvasOffset, 0.0f)); // Adjust xPosition and yPosition
+        GLuint modelLoc = glGetUniformLocation(shaderProgram, "modelMatrix");
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
 
+        glBindVertexArray(canvas.vao);
+        glBindTexture(GL_TEXTURE_2D, tex.handle);
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        glm::vec4 camera_translate = glm::column(glm::inverse(model_view), 3);
-        glm::vec3 camera_location = glm::vec3(camera_translate.x, camera_translate.y, camera_translate.z);
-        camera_location /= glm::vec3(camera_translate.w);
-
-        glBindTexture(GL_TEXTURE_2D, g_transfer_texture);
-
-        glEnable(GL_CULL_FACE);
-        glCullFace(GL_BACK);
-
-        glUseProgram(g_volume_program);
-        uploadUniforms(camera_location, sampling_fact, projection, model_view);
-
-        if (!g_pause) {
-            g_cube.draw();
-        }
+        glBindVertexArray(0);
         glUseProgram(0);
         renderGUI();
 
-        if (g_show_transfer_function)
-            g_transfer_fun.draw_texture(g_transfer_function_pos, g_transfer_function_size, g_transfer_texture);
         glBindTexture(GL_TEXTURE_2D, 0);
-
         g_win.update();
         first_frame = false;
     }

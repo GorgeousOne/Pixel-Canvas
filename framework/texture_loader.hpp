@@ -4,7 +4,7 @@
 #include <string>
 
 struct Texture {
-    GLuint handle;
+    unsigned int handle;
     int width;
     int height;
     int channel_num;

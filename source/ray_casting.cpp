@@ -609,8 +609,10 @@ Model createQuad() {
     glBindVertexArray(model.vao);
     glBindBuffer(GL_ARRAY_BUFFER, model.vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)0);
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
+
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
 
@@ -638,7 +640,7 @@ int main(int argc, char *argv[]) {
         g_reload_shader_error = true;
     }
 
-    Texture tex = texture_loader::uploadTexture("C:/Users/Fred Feuerpferd/Pictures/jana+dennis.png");
+    Texture pixelImg = texture_loader::uploadTexture("C:/Users/Fred Feuerpferd/Pictures/haney-cropped.png");
     Model canvas = createQuad();
     glm::vec2 canvasOffset{};
 
@@ -665,16 +667,15 @@ int main(int argc, char *argv[]) {
             //TODO move canvas
         }
         //render canvas
-        glBindTexture(GL_TEXTURE_2D, tex.handle);
-
         glUseProgram(shaderProgram);
         glm::mat4 modelMatrix = glm::mat4(1.0f);
         modelMatrix = glm::translate(modelMatrix, glm::vec3(canvasOffset, 0.0f)); // Adjust xPosition and yPosition
+
         GLuint modelLoc = glGetUniformLocation(shaderProgram, "modelMatrix");
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
 
         glBindVertexArray(canvas.vao);
-        glBindTexture(GL_TEXTURE_2D, tex.handle);
+        glBindTexture(GL_TEXTURE_2D, pixelImg.handle);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
         glBindVertexArray(0);

@@ -597,10 +597,10 @@ Model createQuad() {
     Model model;
     GLfloat vertices[] = {
             // Positions        // Texture Coords
-            -0.5f,  0.5f,       0.0f, 1.0f,
-            0.5f,  0.5f,       1.0f, 1.0f,
-            0.5f, -0.5f,       1.0f, 0.0f,
-            -0.5f, -0.5f,       0.0f, 0.0f
+            -0.5f,  0.5f,       0.0f, 0.0f,
+            0.5f,  0.5f,       1.0f, 0.0f,
+            0.5f, -0.5f,       1.0f, 1.0f,
+            -0.5f, -0.5f,       0.0f, 1.0f
     };
 
     glGenVertexArrays(1, &model.vao);
@@ -621,6 +621,23 @@ Model createQuad() {
     return model;
 }
 
+glm::vec2 canvasOffset{};
+glm::vec2 lastMousePos{};
+
+void handleMouse(float aspect) {
+    glm::vec2 mousePos = g_win.mousePosition();
+
+    if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT)) {
+        canvasOffset += (mousePos - lastMousePos) * glm::vec2(aspect, 1.0);
+    }
+    if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_MIDDLE)) {
+    }
+    lastMousePos = mousePos;
+}
+
+glm::mat4 getModelMatrix() {
+
+}
 
 int main(int argc, char *argv[]) {
     //g_win = Window(g_window_res);
@@ -640,9 +657,8 @@ int main(int argc, char *argv[]) {
         g_reload_shader_error = true;
     }
 
-    Texture pixelImg = texture_loader::uploadTexture("C:/Users/Fred Feuerpferd/Pictures/haney-cropped.png");
+    Texture pixelImg = texture_loader::uploadTexture("C:/Users/Fred Feuerpferd/Pictures/lynx.png");
     Model canvas = createQuad();
-    glm::vec2 canvasOffset{};
 
     // manage keys here
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)
@@ -652,23 +668,35 @@ int main(int argc, char *argv[]) {
         if (g_reload_shader) {
             reloadShaders();
         }
-        handleUIInput();
-
-
         glm::ivec2 size = g_win.windowSize();
+        float imgAspect = (float) pixelImg.width / (float) pixelImg.height;
+        float screenAspect = (float) size.x / (float) size.y;
+
+        handleUIInput();
+        if (!g_over_gui) {
+            handleMouse(screenAspect);
+        }
+
         glViewport(0, 0, size.x, size.y);
         glClearColor(g_background_color.x, g_background_color.y, g_background_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        float aspect = (float) size.x / (float) size.y;
+        //1 - (-1) = 2
+        float scaleX = 2.0f;
+        float scaleY = 2.0f;
 
-        //rotate cube if not ui clicked
-        if (!g_over_gui) {
-            //TODO move canvas
+        //idk scale camera to un-stretch window but also stretch canvas squad to image rect
+        if (imgAspect / screenAspect > 1.0f) {
+            scaleY /= imgAspect / screenAspect;
+        } else {
+            scaleX *= imgAspect / screenAspect;
         }
+
         //render canvas
         glUseProgram(shaderProgram);
         glm::mat4 modelMatrix = glm::mat4(1.0f);
+
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(scaleX, scaleY, 1.0f));
         modelMatrix = glm::translate(modelMatrix, glm::vec3(canvasOffset, 0.0f)); // Adjust xPosition and yPosition
 
         GLuint modelLoc = glGetUniformLocation(shaderProgram, "modelMatrix");

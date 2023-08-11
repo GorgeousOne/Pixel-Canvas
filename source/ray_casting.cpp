@@ -16,6 +16,8 @@
 #define _USE_MATH_DEFINES
 
 #include "fensterchen.hpp"
+#include "texture_loader.hpp"
+
 #include <string>
 #include <iostream>
 #include <sstream>      // std::stringstream
@@ -843,6 +845,8 @@ int main(int argc, char *argv[]) {
 
     // init object manipulator (turntable)
     Manipulator manipulator;
+
+    GLuint tex = texture_loader::uploadTexture("C:/Users/Fred Feuerpferd/Pictures/selfie.png", false);
 
     // manage keys here
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)

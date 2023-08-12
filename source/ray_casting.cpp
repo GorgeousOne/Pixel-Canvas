@@ -54,9 +54,6 @@
 
 namespace fs = std::filesystem;
 
-int g_task_chosen = 0;
-int g_task_chosen_old = g_task_chosen;
-
 const std::string g_file_vertex_shader("../../../source/shader/image_display.vert");
 const std::string g_file_fragment_shader("../../../source/shader/image_display.frag");
 
@@ -81,17 +78,11 @@ Window g_win(g_window_res);
 GLuint shaderProgram(0);
 
 // imgui variables
-static bool g_show_gui = true;
 static bool mousePressed[2] = {false, false};
 
 //imgui values
 bool is_mouse_over_gui = false;
-bool g_reload_shader_pressed = false;
-
-
-bool g_pause = false;
 bool first_frame = true;
-
 bool was_mouse_down = false;
 bool is_canvas_pressed = false;
 
@@ -100,9 +91,11 @@ glm::vec2 pixelPos{};
 glm::vec2 lastMousePos{};
 
 float zoomMax = 5;
-float zoomMin = 0;
-float zoom = zoomMin;
-float zoomStep = 1;
+float zoomMin = -0.4;
+float zoom = 0;
+float zoomStep = 0.2f;
+
+int imgMinuteInterval = 60;
 
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
@@ -151,39 +144,33 @@ std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) 
     return paths;
 }
 
-void showGUI() {
-    ImGuiIO &io = ImGui::GetIO();
+std::string ConvertToHHMM(int timeInMinutes) {
+    int hours = timeInMinutes / 60;
+    int minutes = timeInMinutes % 60;
 
-    int numTextLines = 10;
+    char formattedTime[6];
+    std::sprintf(formattedTime, "%02d:%02d", hours, minutes);
+    return formattedTime;
+}
+
+void showGUI() {
+    int numTextLines = 6;
     float height = ImGui::GetTextLineHeightWithSpacing() * numTextLines;
 
     ImGui::SetNextWindowSize(ImVec2(400, height));
     ImGui::Begin("Timeline", nullptr);
     is_mouse_over_gui = ImGui::IsMouseHoveringAnyWindow();
 
-    // Calculate and show frame rate
-    static ImVector<float> ms_per_frame;
-
-    if (ms_per_frame.empty()) {
-        ms_per_frame.resize(400);
-        memset(&ms_per_frame.front(), 0, ms_per_frame.size() * sizeof(float));
-    }
-    static int ms_per_frame_idx = 0;
-    static float ms_per_frame_accum = 0.0f;
-    if (!g_pause) {
-        ms_per_frame_accum -= ms_per_frame[ms_per_frame_idx];
-        ms_per_frame[ms_per_frame_idx] = ImGui::GetIO().DeltaTime * 1000.0f;
-        ms_per_frame_accum += ms_per_frame[ms_per_frame_idx];
-
-        ms_per_frame_idx = (ms_per_frame_idx + 1) % ms_per_frame.size();
-    }
     //timeline slider
-    ImGui::SliderInt("Image Index", &currentImgIndex, 0, timelineFiles.size() - 1);
+    ImGui::Text("Time since July 20th 13:00 UTC");
+    ImGui::PushItemWidth(350);
+    ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, timelineFiles.size() - 1, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
+    ImGui::PopItemWidth();
 
     ImGui::Text("x");
     ImGui::SameLine();
 
-    float inputFieldWidth = 50.0f;
+    float inputFieldWidth = 40.0f;
     ImGui::PushItemWidth(inputFieldWidth);
 
     //input fields for coordinates
@@ -219,7 +206,9 @@ void handleUIInput() {
             g_win.stop();
         }
 
-        if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_MIDDLE) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_RIGHT)) {
+        if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
+            zoom = 0;
+            setPixelPos(glm::vec2());
         }
     }
 }
@@ -318,7 +307,7 @@ glm::mat4 getModelMatrix(float screenAspect) {
     canvasPos.x *= -1;
 
     modelMatrix = glm::translate(glm::mat4{}, glm::vec3(glm::round(canvasPos), 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
-    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2, zoom)) / screenSize, 1.0f)) * modelMatrix;
+    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenSize, 1.0f)) * modelMatrix;
 
     return modelMatrix;
 }

@@ -96,6 +96,8 @@ float zoom = 0;
 float zoomStep = 0.2f;
 
 int imgMinuteInterval = 60;
+bool isSpacePressed = false;
+bool isTimelineAnimated = false;
 
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
@@ -205,10 +207,24 @@ void handleUIInput() {
         if (ImGui::IsKeyPressed(GLFW_KEY_ESCAPE)) {
             g_win.stop();
         }
-
+        //reset scaling and canvas movement
         if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
             zoom = 0;
             setPixelPos(glm::vec2());
+        }
+        //toggle timeline animation
+        if (ImGui::IsKeyPressed(GLFW_KEY_SPACE)) {
+            if (!isSpacePressed) {
+                isTimelineAnimated = !isTimelineAnimated;
+                isSpacePressed = true;
+
+                //reset if at end of images
+                if (isTimelineAnimated && currentImgIndex == timelineFiles.size() - 1) {
+                    currentImgIndex = 0;
+                }
+            }
+        } else {
+            isSpacePressed = false;
         }
     }
 }
@@ -369,6 +385,13 @@ int main(int argc, char *argv[]) {
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)
     while (!g_win.shouldClose()) {
         /// reload shader if key R ist pressed
+        if (isTimelineAnimated) {
+            if (currentImgIndex == timelineFiles.size() - 1) {
+                isTimelineAnimated = false;
+            } else {
+                currentImgIndex += 1;
+            }
+        }
         updateImage();
 
         glm::ivec2 size = g_win.windowSize();

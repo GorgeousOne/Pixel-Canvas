@@ -37,6 +37,7 @@
 ///IMGUI INCLUDES
 #include <imgui_impl_glfw_gl3.h>
 #include <vector>
+#include <format>
 
 
 //-----------------------------------------------------------------------------
@@ -98,6 +99,8 @@ float zoomStep = 0.2f;
 int imgMinuteInterval = 60;
 bool isSpacePressed = false;
 bool isTimelineAnimated = false;
+float animationSpeed = 10;
+float animationImgIndex = currentImgIndex;
 
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
@@ -156,7 +159,7 @@ std::string ConvertToHHMM(int timeInMinutes) {
 }
 
 void showGUI() {
-    int numTextLines = 6;
+    int numTextLines = 8;
     float height = ImGui::GetTextLineHeightWithSpacing() * numTextLines;
 
     ImGui::SetNextWindowSize(ImVec2(400, height));
@@ -166,8 +169,13 @@ void showGUI() {
     //timeline slider
     ImGui::Text("Time since July 20th 13:00 UTC");
     ImGui::PushItemWidth(350);
-    ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, timelineFiles.size() - 1, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
+    bool sliderSlid = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, timelineFiles.size() - 1, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
     ImGui::PopItemWidth();
+
+    // stop animation when time slider clicked
+    if (sliderSlid) {
+        isTimelineAnimated = false;
+    }
 
     ImGui::Text("x");
     ImGui::SameLine();
@@ -198,6 +206,11 @@ void showGUI() {
     if (yChanged) {
         setPixelPos(glm::vec2(pixelPos.x, atoi(yInputBuffer)));
     }
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(1) << animationSpeed << "x";
+
+    ImGui::Text("Animation speed:");
+    ImGui::SliderFloat("##SpeedSlider", &animationSpeed, 4, 100, oss.str().c_str());
     ImGui::End();
 }
 
@@ -217,10 +230,11 @@ void handleUIInput() {
             if (!isSpacePressed) {
                 isTimelineAnimated = !isTimelineAnimated;
                 isSpacePressed = true;
+                animationImgIndex = currentImgIndex;
 
                 //reset if at end of images
                 if (isTimelineAnimated && currentImgIndex == timelineFiles.size() - 1) {
-                    currentImgIndex = 0;
+                    animationImgIndex = 0;
                 }
             }
         } else {
@@ -381,17 +395,24 @@ int main(int argc, char *argv[]) {
     loadedImg = texture_loader::uploadTexture(timelineImgDir + timelineFiles[currentImgIndex].string());
     Model canvas = createImgQuad();
 
+    double previousTime = glfwGetTime();
+
     // manage keys here
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)
     while (!g_win.shouldClose()) {
-        /// reload shader if key R ist pressed
+        double currentTime = glfwGetTime();
+        double elapsedTime = currentTime - previousTime;
+
         if (isTimelineAnimated) {
-            if (currentImgIndex == timelineFiles.size() - 1) {
+            animationImgIndex += (float) elapsedTime * animationSpeed;
+            currentImgIndex = glm::clamp((int) animationImgIndex, 0, (int) timelineFiles.size());
+
+            if (currentImgIndex >= timelineFiles.size() - 1) {
                 isTimelineAnimated = false;
-            } else {
-                currentImgIndex += 1;
             }
         }
+        previousTime = currentTime;
+
         updateImage();
 
         glm::ivec2 size = g_win.windowSize();

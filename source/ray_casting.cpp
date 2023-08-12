@@ -11,10 +11,6 @@
 #pragma warning (disable: 4996)         // 'This function or variable may be unsafe': strcpy, strdup, sprintf, vsnprintf, sscanf, fopen
 #endif
 
-#define SHOW_TRANSFER_FUNCTION_WINDOW 1
-
-#define _USE_MATH_DEFINES
-
 #include "fensterchen.hpp"
 #include "texture_loader.hpp"
 #include "utils.hpp"
@@ -31,6 +27,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 ///PROJECT INCLUDES
 #include <imgui.h>
@@ -47,15 +44,6 @@
 //-----------------------------------------------------------------------------
 
 #define IM_ARRAYSIZE(_ARR)          ((int)(sizeof(_ARR)/sizeof(*_ARR)))
-
-#undef PI
-const float PI = 3.14159265358979323846f;
-
-#ifdef INT_MAX
-#define IM_INT_MAX INT_MAX
-#else
-#define IM_INT_MAX 2147483647
-#endif
 
 // Play it nice with Windows users. Notepad in 2014 still doesn't display text data with Unix-style \n.
 #ifdef _MSC_VER
@@ -79,7 +67,7 @@ GLuint loadShaders(std::string const &vs, std::string const &fs) {
 }
 
 int currentImgIndex = 0;
-int lastImgIndex = currentImgIndex;
+int lastImgIndex = -1;
 std::string timelineImgDir = "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/real_timeline/";
 std::vector<fs::path> timelineFiles;
 Texture loadedImg;
@@ -100,16 +88,18 @@ static bool g_show_gui = true;
 static bool mousePressed[2] = {false, false};
 
 //imgui values
-bool g_over_gui = false;
+bool is_mouse_over_gui = false;
 bool g_reload_shader = false;
 bool g_reload_shader_pressed = false;
 
 
 bool g_pause = false;
-
 bool first_frame = true;
 
-void UpdateImGui() {
+bool was_mouse_down = false;
+bool is_canvas_pressed = false;
+
+void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
 
     // Setup resolution (every frame to accommodate for window resizing)
@@ -117,7 +107,8 @@ void UpdateImGui() {
     int display_w, display_h;
     glfwGetWindowSize(g_win.getGLFWwindow(), &w, &h);
     glfwGetFramebufferSize(g_win.getGLFWwindow(), &display_w, &display_h);
-    io.DisplaySize = ImVec2((float) display_w, (float) display_h);                                   // Display size, in pixels. For clamping windows positions.
+    // Display size, in pixels. For clamping windows positions.
+    io.DisplaySize = ImVec2((float) display_w, (float) display_h);
 
     // Setup time step
     static double time = 0.0f;
@@ -129,11 +120,13 @@ void UpdateImGui() {
     // (we already got mouse wheel, keyboard keys & characters from glfw callbacks polled in glfwPollEvents())
     double mouse_x, mouse_y;
     glfwGetCursorPos(g_win.getGLFWwindow(), &mouse_x, &mouse_y);
-    mouse_x *= (float) display_w / w;                                                               // Convert mouse coordinates to pixels
+    // Convert mouse coordinates to pixels
+    mouse_x *= (float) display_w / w;
     mouse_y *= (float) display_h / h;
-    io.MousePos = ImVec2((float) mouse_x, (float) mouse_y);                                          // Mouse position, in pixels (set to -1,-1 if no mouse / on another screen, etc.)
-    io.MouseDown[0] = mousePressed[0] || glfwGetMouseButton(g_win.getGLFWwindow(), GLFW_MOUSE_BUTTON_LEFT) !=
-                                         0;  // If a mouse press event came, always pass it as "mouse held this frame", so we don't miss click-release events that are shorter than 1 frame.
+    // Mouse position, in pixels (set to -1,-1 if no mouse / on another screen, etc.)
+    io.MousePos = ImVec2((float) mouse_x, (float) mouse_y);
+    // If a mouse press event came, always pass it as "mouse held this frame", so we don't miss click-release events that are shorter than 1 frame.
+    io.MouseDown[0] = mousePressed[0] || glfwGetMouseButton(g_win.getGLFWwindow(), GLFW_MOUSE_BUTTON_LEFT) != 0;
     io.MouseDown[1] = mousePressed[1] || glfwGetMouseButton(g_win.getGLFWwindow(), GLFW_MOUSE_BUTTON_RIGHT) != 0;
 
     // Start the frame
@@ -141,8 +134,7 @@ void UpdateImGui() {
     ImGui_ImplGlfwGL3_NewFrame();
 }
 
-
-std::vector<fs::path> get_all(fs::path const &root, std::string const &ext) {
+std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) {
     std::vector<fs::path> paths;
 
     if (fs::exists(root) && fs::is_directory(root)) {
@@ -157,15 +149,17 @@ std::vector<fs::path> get_all(fs::path const &root, std::string const &ext) {
 
 void showGUI() {
     ImGuiIO &io = ImGui::GetIO();
-    ImVec2 whole_window_size = io.DisplaySize;
-    ImGui::SetNextWindowPos(ImVec2(0, 0));
 
-    ImGui::SetNextWindowSize(ImVec2(400, whole_window_size.y));
-    ImGui::Begin("Timeline", &g_show_gui);
-    g_over_gui = ImGui::IsMouseHoveringAnyWindow();
+    int numTextLines = 10;
+    float height = ImGui::GetTextLineHeightWithSpacing() * numTextLines;
+
+    ImGui::SetNextWindowSize(ImVec2(400, height));
+    ImGui::Begin("Timeline", nullptr);
+    is_mouse_over_gui = ImGui::IsMouseHoveringAnyWindow();
 
     // Calculate and show frame rate
     static ImVector<float> ms_per_frame;
+
     if (ms_per_frame.empty()) {
         ms_per_frame.resize(400);
         memset(&ms_per_frame.front(), 0, ms_per_frame.size() * sizeof(float));
@@ -232,12 +226,10 @@ void handleUIInput() {
 void reloadShaders() {
     GLuint newProgram(0);
     try {
-        //std::cout << "Reload shaders" << std::endl;
         newProgram = loadShaders(g_file_vertex_shader, g_file_fragment_shader);
         g_error_message = "";
     }
     catch (std::logic_error &e) {
-        //std::cerr << e.what() << std::endl;
         std::stringstream ss;
         ss << e.what() << std::endl;
         g_error_message = ss.str();
@@ -260,7 +252,7 @@ void renderGUI() {
     io.MouseWheel = 0;
     mousePressed[0] = mousePressed[1] = false;
     glfwPollEvents();
-    UpdateImGui();
+    updateImGui();
     showGUI();
 
     // Rendering
@@ -274,7 +266,7 @@ struct Model {
     GLuint vbo;
 };
 
-Model createQuad() {
+Model createImgQuad() {
     // Set up vertex data
     Model model;
     GLfloat vertices[] = {
@@ -302,28 +294,52 @@ Model createQuad() {
     return model;
 }
 
+glm::vec2 screenSize{};
 glm::vec2 canvasOffset{};
 glm::vec2 lastMousePos{};
 
-void handleMouse(float aspect) {
-    glm::vec2 mousePos = g_win.mousePosition();
+void handleMouse(bool is_mouse_over_ui) {
+    glm::vec2 mousePos = g_win.mousePosition() * screenSize * 2.0f;
 
     if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT)) {
-        canvasOffset += (mousePos - lastMousePos) * glm::vec2(aspect, 1.0);
+        if (!was_mouse_down && !is_mouse_over_ui) {
+            is_canvas_pressed = true;
+        }
+        if (is_canvas_pressed) {
+            glm::vec2 border {loadedImg.width, loadedImg.height};
+            canvasOffset += (mousePos - lastMousePos);
+            canvasOffset = glm::clamp(canvasOffset, -0.5f * border, 0.5f * border);
+        }
+        was_mouse_down = true;
+    } else {
+        was_mouse_down = false;
+        is_canvas_pressed = false;
     }
+
     if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_MIDDLE)) {
     }
     lastMousePos = mousePos;
 }
 
-glm::mat4 getModelMatrix() {
-    return glm::mat4{};
+glm::mat4 getModelMatrix(float screenAspect) {
+    //1 - (-1) = 2
+    //idk scale camera to un-stretch window but also stretch canvas squad to image rect
+    glm::vec2 canvasSize{loadedImg.width, loadedImg.height};
+
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(canvasSize, 1.0f)) * modelMatrix;
+    modelMatrix = glm::translate(glm::mat4{}, glm::vec3(canvasOffset, 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
+    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(1) / screenSize, 1.0f)) * modelMatrix;
+
+    return modelMatrix;
 }
 
 void updateImage() {
     if (currentImgIndex != lastImgIndex) {
         glDeleteTextures(1, &loadedImg.handle);
         loadedImg = texture_loader::uploadTexture(timelineImgDir + timelineFiles[currentImgIndex].string());
+
+        float imgAspect = (float) loadedImg.width / (float) loadedImg.height;
         lastImgIndex = currentImgIndex;
     }
 }
@@ -345,9 +361,9 @@ int main(int argc, char *argv[]) {
         g_reload_shader_error = true;
     }
 
-    timelineFiles = get_all(timelineImgDir, ".png");
+    timelineFiles = getAllFiles(timelineImgDir, ".png");
     loadedImg = texture_loader::uploadTexture(timelineImgDir + timelineFiles[currentImgIndex].string());
-    Model canvas = createQuad();
+    Model canvas = createImgQuad();
 
     // manage keys here
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)
@@ -360,36 +376,25 @@ int main(int argc, char *argv[]) {
         updateImage();
 
         glm::ivec2 size = g_win.windowSize();
-        float imgAspect = (float) loadedImg.width / (float) loadedImg.height;
         float screenAspect = (float) size.x / (float) size.y;
+        float canvasAspect = (float) loadedImg.width / (float) loadedImg.height;
+        // make screen scaling fit canvas
+        if (screenAspect > canvasAspect) {
+            screenSize = glm::vec2(0.5f * screenAspect * loadedImg.height, 0.5f * loadedImg.height);
+        } else {
+            screenSize = glm::vec2(0.5f * loadedImg.width, 0.5f * loadedImg.width / screenAspect);
+        }
 
         handleUIInput();
-        if (!g_over_gui) {
-            handleMouse(screenAspect);
-        }
+        handleMouse(is_mouse_over_gui);
+        glm::mat4 modelMatrix = getModelMatrix(screenAspect);
 
         glViewport(0, 0, size.x, size.y);
         glClearColor(g_background_color.x, g_background_color.y, g_background_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        //1 - (-1) = 2
-        float scaleX = 2.0f;
-        float scaleY = 2.0f;
-
-        //idk scale camera to un-stretch window but also stretch canvas squad to image rect
-        if (imgAspect / screenAspect > 1.0f) {
-            scaleY /= imgAspect / screenAspect;
-        } else {
-            scaleX *= imgAspect / screenAspect;
-        }
-
         //render canvas
         glUseProgram(shaderProgram);
-        glm::mat4 modelMatrix = glm::mat4(1.0f);
-
-        modelMatrix = glm::scale(modelMatrix, glm::vec3(scaleX, scaleY, 1.0f));
-        modelMatrix = glm::translate(modelMatrix, glm::vec3(canvasOffset, 0.0f)); // Adjust xPosition and yPosition
-
         GLuint modelLoc = glGetUniformLocation(shaderProgram, "modelMatrix");
         glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
 

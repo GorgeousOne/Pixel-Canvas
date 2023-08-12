@@ -78,10 +78,7 @@ glm::vec3 g_background_color = glm::vec3(0.08f, 0.08f, 0.08f);   //grey
 glm::ivec2 g_window_res = glm::ivec2(1280, 720);
 Window g_win(g_window_res);
 
-// Volume Rendering GLSL Program
 GLuint shaderProgram(0);
-std::string g_error_message;
-bool g_reload_shader_error = false;
 
 // imgui variables
 static bool g_show_gui = true;
@@ -89,7 +86,6 @@ static bool mousePressed[2] = {false, false};
 
 //imgui values
 bool is_mouse_over_gui = false;
-bool g_reload_shader = false;
 bool g_reload_shader_pressed = false;
 
 
@@ -100,8 +96,13 @@ bool was_mouse_down = false;
 bool is_canvas_pressed = false;
 
 glm::vec2 screenSize{};
-glm::vec2 canvasOffset{};
+glm::vec2 pixelPos{};
 glm::vec2 lastMousePos{};
+
+float zoomMax = 5;
+float zoomMin = 0;
+float zoom = zoomMin;
+float zoomStep = 1;
 
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
@@ -130,6 +131,11 @@ void updateImGui() {
     // Start the frame
     //ImGui::NewFrame();
     ImGui_ImplGlfwGL3_NewFrame();
+}
+
+void setPixelPos(glm::vec2 const& newPos) {
+    glm::vec2 border {loadedImg.width, loadedImg.height};
+    pixelPos = glm::clamp(newPos, -0.5f * border, 0.5f * border - glm::vec2(1));
 }
 
 std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) {
@@ -182,7 +188,7 @@ void showGUI() {
 
     //input fields for coordinates
     char xInputBuffer[32];
-    snprintf(xInputBuffer, sizeof(xInputBuffer), "%d", (int) canvasOffset.x); // Convert int to string
+    snprintf(xInputBuffer, sizeof(xInputBuffer), "%d", (int) pixelPos.x); // Convert int to string
     bool xChanged = ImGui::InputText("##ValueInput", xInputBuffer, sizeof(xInputBuffer), ImGuiInputTextFlags_CharsDecimal);
 
     ImGui::PopItemWidth();
@@ -192,34 +198,16 @@ void showGUI() {
     ImGui::PushItemWidth(inputFieldWidth);
 
     char yInputBuffer[32]; // Buffer for y input text
-    snprintf(yInputBuffer, sizeof(yInputBuffer), "%d", (int) canvasOffset.y);
+    snprintf(yInputBuffer, sizeof(yInputBuffer), "%d", (int) pixelPos.y);
     bool yChanged = ImGui::InputText("##YInput", yInputBuffer, sizeof(yInputBuffer), ImGuiInputTextFlags_CharsDecimal);
     ImGui::PopItemWidth();
 
     // If user edited the input text, update the value
     if (xChanged) {
-        canvasOffset.x = glm::clamp(atoi(xInputBuffer), -loadedImg.width / 2, loadedImg.width / 2 - 1); // Convert string to int
+        setPixelPos(glm::vec2(atoi(xInputBuffer), pixelPos.y));
     }
     if (yChanged) {
-        canvasOffset.y = glm::clamp(atoi(yInputBuffer), -loadedImg.height / 2, loadedImg.height / 2 - 1);
-    }
-
-    if (g_task_chosen != g_task_chosen_old) {
-        g_reload_shader = true;
-        g_task_chosen_old = g_task_chosen;
-    }
-    if (ImGui::CollapsingHeader("Shader", 0, true, true)) {
-        static ImVec4 text_color(1.0, 1.0, 1.0, 1.0);
-
-        if (g_reload_shader_error) {
-            text_color = ImVec4(1.0, 0.0, 0.0, 1.0);
-            ImGui::TextColored(text_color, "Shader Error");
-        } else {
-            text_color = ImVec4(0.0, 1.0, 0.0, 1.0);
-            ImGui::TextColored(text_color, "Shader Ok");
-        }
-        ImGui::TextWrapped(g_error_message.c_str());
-        g_reload_shader ^= ImGui::Button("Reload Shader");
+        setPixelPos(glm::vec2(pixelPos.x, atoi(yInputBuffer)));
     }
     ImGui::End();
 }
@@ -231,46 +219,8 @@ void handleUIInput() {
             g_win.stop();
         }
 
-        if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
-            g_reload_shader = true;
-        }
-
         if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_MIDDLE) || ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_RIGHT)) {
         }
-    }
-    if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
-        if (!g_reload_shader_pressed) {
-            g_reload_shader = true;
-            g_reload_shader_pressed = true;
-        } else {
-            g_reload_shader = false;
-        }
-    } else {
-        g_reload_shader = false;
-        g_reload_shader_pressed = false;
-    }
-}
-
-void reloadShaders() {
-    GLuint newProgram(0);
-    try {
-        newProgram = loadShaders(g_file_vertex_shader, g_file_fragment_shader);
-        g_error_message = "";
-    }
-    catch (std::logic_error &e) {
-        std::stringstream ss;
-        ss << e.what() << std::endl;
-        g_error_message = ss.str();
-        g_reload_shader_error = true;
-        newProgram = 0;
-    }
-    if (0 != newProgram) {
-        glDeleteProgram(shaderProgram);
-        shaderProgram = newProgram;
-        g_reload_shader_error = false;
-
-    } else {
-        g_reload_shader_error = true;
     }
 }
 
@@ -322,8 +272,15 @@ Model createImgQuad() {
     return model;
 }
 
+glm::vec2 getMousePixelPos() {
+    glm::vec2 mousePos = g_win.mousePosition() * screenSize * 2.0f - screenSize;
+    mousePos /= glm::pow(2.0f, zoom);
+    mousePos.x *= -1;
+    return mousePos;
+}
+
 void handleMouse(bool is_mouse_over_ui) {
-    glm::vec2 mousePos = g_win.mousePosition() * screenSize * 2.0f;
+    glm::vec2 mousePos = g_win.mousePosition() * screenSize * 2.0f / glm::pow(2.0f, zoom);
     mousePos.x *= -1;
 
     if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT)) {
@@ -331,19 +288,23 @@ void handleMouse(bool is_mouse_over_ui) {
             is_canvas_pressed = true;
         }
         if (is_canvas_pressed) {
-            glm::vec2 border {loadedImg.width, loadedImg.height};
-            canvasOffset += (mousePos - lastMousePos);
-            canvasOffset = glm::clamp(canvasOffset, -0.5f * border, 0.5f * border - glm::vec2(1));
+            setPixelPos(pixelPos + (mousePos - lastMousePos));
         }
         was_mouse_down = true;
     } else {
         was_mouse_down = false;
         is_canvas_pressed = false;
     }
-
-    if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_MIDDLE)) {
-    }
     lastMousePos = mousePos;
+}
+
+void handleMouseWheel(GLFWwindow* window, double xoffset, double yoffset) {
+    glm::vec2 delta = getMousePixelPos() - pixelPos;
+    zoom = glm::clamp(zoom + zoomStep * (float) yoffset, zoomMin, zoomMax);
+    glm::vec2 delta2 = getMousePixelPos() - pixelPos;
+
+    //make zoom go to mouse pointer
+    setPixelPos(pixelPos + delta2 - delta);
 }
 
 glm::mat4 getModelMatrix(float screenAspect) {
@@ -353,11 +314,11 @@ glm::mat4 getModelMatrix(float screenAspect) {
 
     glm::mat4 modelMatrix = glm::mat4(1.0f);
     modelMatrix = glm::scale(glm::mat4{}, glm::vec3(canvasSize, 1.0f)) * modelMatrix;
-    glm::vec2 canvasPos = canvasOffset;
+    glm::vec2 canvasPos = pixelPos;
     canvasPos.x *= -1;
 
     modelMatrix = glm::translate(glm::mat4{}, glm::vec3(glm::round(canvasPos), 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
-    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(1) / screenSize, 1.0f)) * modelMatrix;
+    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2, zoom)) / screenSize, 1.0f)) * modelMatrix;
 
     return modelMatrix;
 }
@@ -375,6 +336,7 @@ void updateImage() {
 int main(int argc, char *argv[]) {
     //InitImGui();
     ImGui_ImplGlfwGL3_Init(g_win.getGLFWwindow(), true);
+    glfwSetScrollCallback(g_win.getGLFWwindow(), handleMouseWheel);
 
     // loading actual raytracing shader code (volume.vert, volume.frag)
     // edit volume.frag to define the result of our volume raycaster
@@ -385,8 +347,6 @@ int main(int argc, char *argv[]) {
         //std::cerr << e.what() << std::endl;
         std::stringstream ss;
         ss << e.what() << std::endl;
-        g_error_message = ss.str();
-        g_reload_shader_error = true;
     }
 
     timelineFiles = getAllFiles(timelineImgDir, ".png");
@@ -398,9 +358,6 @@ int main(int argc, char *argv[]) {
     while (!g_win.shouldClose()) {
 
         /// reload shader if key R ist pressed
-        if (g_reload_shader) {
-            reloadShaders();
-        }
         updateImage();
 
         glm::ivec2 size = g_win.windowSize();

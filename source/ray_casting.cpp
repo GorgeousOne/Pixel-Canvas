@@ -33,7 +33,6 @@
 #include <glm/gtx/transform.hpp>
 
 ///PROJECT INCLUDES
-#include <utils.hpp>
 #include <imgui.h>
 
 #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))

@@ -1,16 +1,16 @@
 file(GLOB_RECURSE FRAMEWORK_SHADER_VERTEX RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.vert)
 file(GLOB_RECURSE FRAMEWORK_SHADER_FRAGME RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.frag)
 
-add_executable(ray_casting ray_casting.cpp
+add_executable(pixel_canvas pixel_canvas.cpp
               ${FRAMEWORK_SHADER_VERTEX}
               ${FRAMEWORK_SHADER_FRAGME})
 
-target_link_libraries(ray_casting ${FRAMEWORK_NAME} glfw ${GLFW_LIBRARIES})
-add_dependencies(ray_casting glfw ${FRAMEWORK_NAME})
+target_link_libraries(pixel_canvas ${FRAMEWORK_NAME} glfw ${GLFW_LIBRARIES})
+add_dependencies(pixel_canvas glfw ${FRAMEWORK_NAME})
 
 
 if(MSVC)
 	# set working directory and start up project for VS project
-	set_target_properties(ray_casting PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${WORKING_DIR}")
-  	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT ray_casting)
+	set_target_properties(pixel_canvas PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${WORKING_DIR}")
+  	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT pixel_canvas)
 endif(MSVC)

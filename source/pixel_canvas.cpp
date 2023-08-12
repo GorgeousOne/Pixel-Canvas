@@ -86,7 +86,7 @@ bool first_frame = true;
 bool was_mouse_down = false;
 bool is_canvas_pressed = false;
 
-glm::vec2 screenSize{};
+glm::vec2 screenScale{};
 glm::vec2 pixelPos{};
 glm::vec2 lastMousePos{};
 
@@ -262,14 +262,14 @@ Model createImgQuad() {
 }
 
 glm::vec2 getMousePixelPos() {
-    glm::vec2 mousePos = g_win.mousePosition() * screenSize * 2.0f - screenSize;
+    glm::vec2 mousePos = g_win.mousePosition() * screenScale * 2.0f - screenScale;
     mousePos /= glm::pow(2.0f, zoom);
     mousePos.x *= -1;
     return mousePos;
 }
 
 void handleMouse(bool is_mouse_over_ui) {
-    glm::vec2 mousePos = g_win.mousePosition() * screenSize * 2.0f / glm::pow(2.0f, zoom);
+    glm::vec2 mousePos = g_win.mousePosition() * screenScale * 2.0f / glm::pow(2.0f, zoom);
     mousePos.x *= -1;
 
     if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT)) {
@@ -296,7 +296,7 @@ void handleMouseWheel(GLFWwindow* window, double xoffset, double yoffset) {
     setPixelPos(pixelPos + delta2 - delta);
 }
 
-glm::mat4 getModelMatrix(float screenAspect) {
+glm::mat4 getModelMatrix() {
     //1 - (-1) = 2
     //idk scale camera to un-stretch window but also stretch canvas squad to image rect
     glm::vec2 canvasSize{loadedImg.width, loadedImg.height};
@@ -307,7 +307,7 @@ glm::mat4 getModelMatrix(float screenAspect) {
     canvasPos.x *= -1;
 
     modelMatrix = glm::translate(glm::mat4{}, glm::vec3(glm::round(canvasPos), 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
-    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenSize, 1.0f)) * modelMatrix;
+    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenScale, 1.0f)) * modelMatrix;
 
     return modelMatrix;
 }
@@ -316,10 +316,33 @@ void updateImage() {
     if (currentImgIndex != lastImgIndex) {
         glDeleteTextures(1, &loadedImg.handle);
         loadedImg = texture_loader::uploadTexture(timelineImgDir + timelineFiles[currentImgIndex].string());
-
-        float imgAspect = (float) loadedImg.width / (float) loadedImg.height;
         lastImgIndex = currentImgIndex;
     }
+}
+
+void updateScreenScale(glm::ivec2 const& windowSize) {
+    float screenAspect = (float) windowSize.x / (float) windowSize.y;
+    float canvasAspect = (float) loadedImg.width / (float) loadedImg.height;
+    // make screen scaling fit canvas
+    if (screenAspect > canvasAspect) {
+        screenScale = glm::vec2(0.5f * screenAspect * loadedImg.height, 0.5f * loadedImg.height);
+    } else {
+        screenScale = glm::vec2(0.5f * loadedImg.width, 0.5f * loadedImg.width / screenAspect);
+    }
+}
+
+void renderCanvas(Model canvas, glm::mat4 const& modelMatrix) {
+    //render canvas
+    glUseProgram(shaderProgram);
+    GLuint modelLoc = glGetUniformLocation(shaderProgram, "modelMatrix");
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
+
+    glBindVertexArray(canvas.vao);
+    glBindTexture(GL_TEXTURE_2D, loadedImg.handle);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
 }
 
 int main(int argc, char *argv[]) {
@@ -345,39 +368,19 @@ int main(int argc, char *argv[]) {
     // manage keys here
     // add new input if neccessary (ie changing sampling distance, isovalues, ...)
     while (!g_win.shouldClose()) {
-
         /// reload shader if key R ist pressed
         updateImage();
 
         glm::ivec2 size = g_win.windowSize();
-        float screenAspect = (float) size.x / (float) size.y;
-        float canvasAspect = (float) loadedImg.width / (float) loadedImg.height;
-        // make screen scaling fit canvas
-        if (screenAspect > canvasAspect) {
-            screenSize = glm::vec2(0.5f * screenAspect * loadedImg.height, 0.5f * loadedImg.height);
-        } else {
-            screenSize = glm::vec2(0.5f * loadedImg.width, 0.5f * loadedImg.width / screenAspect);
-        }
-
+        updateScreenScale(size);
         handleUIInput();
         handleMouse(is_mouse_over_gui);
-        glm::mat4 modelMatrix = getModelMatrix(screenAspect);
 
         glViewport(0, 0, size.x, size.y);
         glClearColor(g_background_color.x, g_background_color.y, g_background_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        //render canvas
-        glUseProgram(shaderProgram);
-        GLuint modelLoc = glGetUniformLocation(shaderProgram, "modelMatrix");
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
-
-        glBindVertexArray(canvas.vao);
-        glBindTexture(GL_TEXTURE_2D, loadedImg.handle);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-        glBindVertexArray(0);
-        glUseProgram(0);
+        renderCanvas(canvas, getModelMatrix());
         renderGUI();
 
         glBindTexture(GL_TEXTURE_2D, 0);

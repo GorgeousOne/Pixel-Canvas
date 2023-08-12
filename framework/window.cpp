@@ -14,7 +14,7 @@
 Window::Window(glm::ivec2 const& windowsize)
   : m_window(nullptr)
   , m_size(windowsize)
-  , m_title("SciVisEx")
+  , m_title("r/place 2023")
   , m_mousePosition()
   , m_mouseButtonFlags(0)
   , m_keypressed()

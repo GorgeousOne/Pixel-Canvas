@@ -99,6 +99,10 @@ bool first_frame = true;
 bool was_mouse_down = false;
 bool is_canvas_pressed = false;
 
+glm::vec2 screenSize{};
+glm::vec2 canvasOffset{};
+glm::vec2 lastMousePos{};
+
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
 
@@ -109,12 +113,6 @@ void updateImGui() {
     glfwGetFramebufferSize(g_win.getGLFWwindow(), &display_w, &display_h);
     // Display size, in pixels. For clamping windows positions.
     io.DisplaySize = ImVec2((float) display_w, (float) display_h);
-
-    // Setup time step
-    static double time = 0.0f;
-    const double current_time = glfwGetTime();
-    io.DeltaTime = (float) (current_time - time);
-    time = current_time;
 
     // Setup inputs
     // (we already got mouse wheel, keyboard keys & characters from glfw callbacks polled in glfwPollEvents())
@@ -173,13 +171,43 @@ void showGUI() {
 
         ms_per_frame_idx = (ms_per_frame_idx + 1) % ms_per_frame.size();
     }
+    //timeline slider
     ImGui::SliderInt("Image Index", &currentImgIndex, 0, timelineFiles.size() - 1);
+
+    ImGui::Text("x");
+    ImGui::SameLine();
+
+    float inputFieldWidth = 50.0f;
+    ImGui::PushItemWidth(inputFieldWidth);
+
+    //input fields for coordinates
+    char xInputBuffer[32];
+    snprintf(xInputBuffer, sizeof(xInputBuffer), "%d", (int) canvasOffset.x); // Convert int to string
+    bool xChanged = ImGui::InputText("##ValueInput", xInputBuffer, sizeof(xInputBuffer), ImGuiInputTextFlags_CharsDecimal);
+
+    ImGui::PopItemWidth();
+    ImGui::SameLine();
+    ImGui::Text("y");
+    ImGui::SameLine();
+    ImGui::PushItemWidth(inputFieldWidth);
+
+    char yInputBuffer[32]; // Buffer for y input text
+    snprintf(yInputBuffer, sizeof(yInputBuffer), "%d", (int) canvasOffset.y);
+    bool yChanged = ImGui::InputText("##YInput", yInputBuffer, sizeof(yInputBuffer), ImGuiInputTextFlags_CharsDecimal);
+    ImGui::PopItemWidth();
+
+    // If user edited the input text, update the value
+    if (xChanged) {
+        canvasOffset.x = glm::clamp(atoi(xInputBuffer), -loadedImg.width / 2, loadedImg.width / 2 - 1); // Convert string to int
+    }
+    if (yChanged) {
+        canvasOffset.y = glm::clamp(atoi(yInputBuffer), -loadedImg.height / 2, loadedImg.height / 2 - 1);
+    }
 
     if (g_task_chosen != g_task_chosen_old) {
         g_reload_shader = true;
         g_task_chosen_old = g_task_chosen;
     }
-
     if (ImGui::CollapsingHeader("Shader", 0, true, true)) {
         static ImVec4 text_color(1.0, 1.0, 1.0, 1.0);
 
@@ -294,12 +322,9 @@ Model createImgQuad() {
     return model;
 }
 
-glm::vec2 screenSize{};
-glm::vec2 canvasOffset{};
-glm::vec2 lastMousePos{};
-
 void handleMouse(bool is_mouse_over_ui) {
     glm::vec2 mousePos = g_win.mousePosition() * screenSize * 2.0f;
+    mousePos.x *= -1;
 
     if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT)) {
         if (!was_mouse_down && !is_mouse_over_ui) {
@@ -308,7 +333,7 @@ void handleMouse(bool is_mouse_over_ui) {
         if (is_canvas_pressed) {
             glm::vec2 border {loadedImg.width, loadedImg.height};
             canvasOffset += (mousePos - lastMousePos);
-            canvasOffset = glm::clamp(canvasOffset, -0.5f * border, 0.5f * border);
+            canvasOffset = glm::clamp(canvasOffset, -0.5f * border, 0.5f * border - glm::vec2(1));
         }
         was_mouse_down = true;
     } else {
@@ -328,7 +353,10 @@ glm::mat4 getModelMatrix(float screenAspect) {
 
     glm::mat4 modelMatrix = glm::mat4(1.0f);
     modelMatrix = glm::scale(glm::mat4{}, glm::vec3(canvasSize, 1.0f)) * modelMatrix;
-    modelMatrix = glm::translate(glm::mat4{}, glm::vec3(canvasOffset, 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
+    glm::vec2 canvasPos = canvasOffset;
+    canvasPos.x *= -1;
+
+    modelMatrix = glm::translate(glm::mat4{}, glm::vec3(glm::round(canvasPos), 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
     modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(1) / screenSize, 1.0f)) * modelMatrix;
 
     return modelMatrix;

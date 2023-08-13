@@ -75,7 +75,7 @@ std::vector<std::string> imgDataDirs{
 int currentImgIndex = 0;
 int lastImgIndex = -1;
 std::vector<fs::path> timelineFiles;
-int imgNum = -1;
+int maxImgIndex = -1;
 Texture loadedImg;
 
 // set backgorund color here
@@ -106,7 +106,6 @@ float zoom = 0;
 float zoomStep = 0.2f;
 
 int imgMinuteInterval = 60;
-bool isSpacePressed = false;
 bool isTimelineAnimated = false;
 float animationSpeed = 10;
 float animationImgIndex = currentImgIndex;
@@ -170,7 +169,7 @@ std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) 
 
 void loadImgFiles() {
     timelineFiles = getAllFiles(imgDataDirs[dataViewType], ".png");
-    imgNum = (int) timelineFiles.size();
+    maxImgIndex = (int) timelineFiles.size() - 1;
     updateImage(true);
 }
 
@@ -194,7 +193,7 @@ void showGUI() {
     //timeline slider
     ImGui::Text("Time since July 20th 13:00 UTC");
     ImGui::PushItemWidth(350);
-    bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, imgNum - 1, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
+    bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, maxImgIndex, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
     ImGui::PopItemWidth();
 
     // stop animation when time slider clicked
@@ -261,20 +260,25 @@ void handleUIInput() {
             zoom = 0;
             setPixelPos(glm::vec2());
         }
-        //toggle timeline animation
-        if (ImGui::IsKeyPressed(GLFW_KEY_SPACE)) {
-            if (!isSpacePressed) {
-                isTimelineAnimated = !isTimelineAnimated;
-                isSpacePressed = true;
-                animationImgIndex = currentImgIndex;
+        //move 1 image forward / backward
+        if (ImGui::IsKeyPressed(GLFW_KEY_LEFT)) {
+            isTimelineAnimated = false;
+            currentImgIndex = glm::max(0, currentImgIndex - 1);
+        }
+        if (ImGui::IsKeyPressed(GLFW_KEY_RIGHT)) {
+            isTimelineAnimated = false;
+            currentImgIndex = glm::min(maxImgIndex, currentImgIndex + 1);
+        }
 
-                //reset if at end of images
-                if (isTimelineAnimated && currentImgIndex >= imgNum - 1) {
-                    animationImgIndex = 0;
-                }
+        //toggle timeline animation
+        if (ImGui::IsKeyPressed(GLFW_KEY_SPACE, false)) {
+            isTimelineAnimated = !isTimelineAnimated;
+            animationImgIndex = currentImgIndex;
+
+            //reset if at end of images
+            if (isTimelineAnimated && currentImgIndex >= maxImgIndex) {
+                animationImgIndex = 0;
             }
-        } else {
-            isSpacePressed = false;
         }
     }
 }
@@ -444,9 +448,9 @@ int main(int argc, char *argv[]) {
 
         if (isTimelineAnimated) {
             animationImgIndex += (float) elapsedTime * animationSpeed;
-            currentImgIndex = glm::clamp((int) animationImgIndex, 0, imgNum - 1);
+            currentImgIndex = glm::clamp((int) animationImgIndex, 0, maxImgIndex);
 
-            if (currentImgIndex >= imgNum - 1) {
+            if (currentImgIndex >= maxImgIndex) {
                 isTimelineAnimated = false;
             }
         }

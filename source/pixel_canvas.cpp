@@ -67,9 +67,13 @@ GLuint loadShaders(std::string const &vs, std::string const &fs) {
     return createProgram(v, f);
 }
 
+std::vector<std::string> imgDataDirs{
+    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/real_timeline/",
+    "C:/Users/Fred Feuerpferd/AppData/Roaming/.minecraft/screenshots/"
+};
+
 int currentImgIndex = 0;
 int lastImgIndex = -1;
-std::string timelineImgDir = "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/real_timeline/";
 std::vector<fs::path> timelineFiles;
 int imgNum = -1;
 Texture loadedImg;
@@ -107,6 +111,8 @@ bool isTimelineAnimated = false;
 float animationSpeed = 10;
 float animationImgIndex = currentImgIndex;
 
+int dataViewType = 0;
+
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
 
@@ -141,6 +147,14 @@ void setPixelPos(glm::vec2 const& newPos) {
     pixelPos = glm::clamp(newPos, -0.5f * border, 0.5f * border - glm::vec2(1));
 }
 
+void updateImage(bool force) {
+    if (force || currentImgIndex != lastImgIndex) {
+        glDeleteTextures(1, &loadedImg.handle);
+        loadedImg = texture_loader::uploadTexture(imgDataDirs[dataViewType] + timelineFiles[currentImgIndex].string());
+        lastImgIndex = currentImgIndex;
+    }
+}
+
 std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) {
     std::vector<fs::path> paths;
 
@@ -154,6 +168,12 @@ std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) 
     return paths;
 }
 
+void loadImgFiles() {
+    timelineFiles = getAllFiles(imgDataDirs[dataViewType], ".png");
+    imgNum = (int) timelineFiles.size();
+    updateImage(true);
+}
+
 std::string ConvertToHHMM(int timeInMinutes) {
     int hours = timeInMinutes / 60;
     int minutes = timeInMinutes % 60;
@@ -164,7 +184,7 @@ std::string ConvertToHHMM(int timeInMinutes) {
 }
 
 void showGUI() {
-    int numTextLines = 8;
+    int numTextLines = 9;
     float height = ImGui::GetTextLineHeightWithSpacing() * numTextLines;
 
     ImGui::SetNextWindowSize(ImVec2(400, height));
@@ -181,7 +201,7 @@ void showGUI() {
     if (didSliderMove) {
         isTimelineAnimated = false;
     }
-
+    // coordinate viewer / selector
     ImGui::Text("x");
     ImGui::SameLine();
 
@@ -211,11 +231,22 @@ void showGUI() {
     if (yChanged) {
         setPixelPos(glm::vec2(pixelPos.x, atoi(yInputBuffer)));
     }
+
+    //animation speed
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(1) << animationSpeed << "x";
 
     ImGui::Text("Animation speed:");
     ImGui::SliderFloat("##SpeedSlider", &animationSpeed, 4, 100, oss.str().c_str());
+
+    //view selector
+    if (ImGui::RadioButton("Default", &dataViewType, 0)) {
+        loadImgFiles();
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Heatmap", &dataViewType, 1)) {
+        loadImgFiles();
+    }
     ImGui::End();
 }
 
@@ -347,14 +378,6 @@ glm::mat4 getModelMatrix() {
     return modelMatrix;
 }
 
-void updateImage() {
-    if (currentImgIndex != lastImgIndex) {
-        glDeleteTextures(1, &loadedImg.handle);
-        loadedImg = texture_loader::uploadTexture(timelineImgDir + timelineFiles[currentImgIndex].string());
-        lastImgIndex = currentImgIndex;
-    }
-}
-
 void updateScreenScale(glm::ivec2 const& windowSize) {
     float screenAspect = (float) windowSize.x / (float) windowSize.y;
     float canvasAspect = (float) loadedImg.width / (float) loadedImg.height;
@@ -406,9 +429,9 @@ int main(int argc, char *argv[]) {
         ss << e.what() << std::endl;
     }
 
-    timelineFiles = getAllFiles(timelineImgDir, ".png");
-    imgNum = (int) timelineFiles.size();
-    loadedImg = texture_loader::uploadTexture(timelineImgDir + timelineFiles[currentImgIndex].string());
+    loadImgFiles();
+    updateImage(true);
+
     Model canvas = createImgQuad();
 
     double previousTime = glfwGetTime();
@@ -429,7 +452,7 @@ int main(int argc, char *argv[]) {
         }
         previousTime = currentTime;
 
-        updateImage();
+        updateImage(false);
 
         glm::ivec2 size = g_win.windowSize();
         updateScreenScale(size);

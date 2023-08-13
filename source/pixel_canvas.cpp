@@ -55,8 +55,11 @@
 
 namespace fs = std::filesystem;
 
-const std::string g_file_vertex_shader("../../../source/shader/image_display.vert");
-const std::string g_file_fragment_shader("../../../source/shader/image_display.frag");
+const std::string canvasVertPath("../../../source/shader/image_display.vert");
+const std::string canvasFragPath("../../../source/shader/image_display.frag");
+
+const std::string wirenetVertPath("../../../source/shader/wirenet.vert");
+const std::string wirenetFragPath("../../../source/shader/wirenet.frag");
 
 GLuint loadShaders(std::string const &vs, std::string const &fs) {
     std::string v = readFile(vs);
@@ -68,6 +71,7 @@ int currentImgIndex = 0;
 int lastImgIndex = -1;
 std::string timelineImgDir = "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/real_timeline/";
 std::vector<fs::path> timelineFiles;
+int imgNum = -1;
 Texture loadedImg;
 
 // set backgorund color here
@@ -76,7 +80,8 @@ glm::vec3 g_background_color = glm::vec3(0.08f, 0.08f, 0.08f);   //grey
 glm::ivec2 g_window_res = glm::ivec2(1280, 720);
 Window g_win(g_window_res);
 
-GLuint shaderProgram(0);
+GLuint canvasShader(0);
+GLuint wirenetShader(0);
 
 // imgui variables
 static bool mousePressed[2] = {false, false};
@@ -91,7 +96,7 @@ glm::vec2 screenScale{};
 glm::vec2 pixelPos{};
 glm::vec2 lastMousePos{};
 
-float zoomMax = 5;
+float zoomMax = 6;
 float zoomMin = -0.4;
 float zoom = 0;
 float zoomStep = 0.2f;
@@ -169,11 +174,11 @@ void showGUI() {
     //timeline slider
     ImGui::Text("Time since July 20th 13:00 UTC");
     ImGui::PushItemWidth(350);
-    bool sliderSlid = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, timelineFiles.size() - 1, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
+    bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, imgNum - 1, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
     ImGui::PopItemWidth();
 
     // stop animation when time slider clicked
-    if (sliderSlid) {
+    if (didSliderMove) {
         isTimelineAnimated = false;
     }
 
@@ -185,7 +190,7 @@ void showGUI() {
 
     //input fields for coordinates
     char xInputBuffer[32];
-    snprintf(xInputBuffer, sizeof(xInputBuffer), "%d", (int) pixelPos.x); // Convert int to string
+    snprintf(xInputBuffer, sizeof(xInputBuffer), "%d", (int) glm::round(pixelPos.x)); // Convert int to string
     bool xChanged = ImGui::InputText("##ValueInput", xInputBuffer, sizeof(xInputBuffer), ImGuiInputTextFlags_CharsDecimal);
 
     ImGui::PopItemWidth();
@@ -195,7 +200,7 @@ void showGUI() {
     ImGui::PushItemWidth(inputFieldWidth);
 
     char yInputBuffer[32]; // Buffer for y input text
-    snprintf(yInputBuffer, sizeof(yInputBuffer), "%d", (int) pixelPos.y);
+    snprintf(yInputBuffer, sizeof(yInputBuffer), "%d", (int) glm::round(pixelPos.y));
     bool yChanged = ImGui::InputText("##YInput", yInputBuffer, sizeof(yInputBuffer), ImGuiInputTextFlags_CharsDecimal);
     ImGui::PopItemWidth();
 
@@ -233,7 +238,7 @@ void handleUIInput() {
                 animationImgIndex = currentImgIndex;
 
                 //reset if at end of images
-                if (isTimelineAnimated && currentImgIndex == timelineFiles.size() - 1) {
+                if (isTimelineAnimated && currentImgIndex >= imgNum - 1) {
                     animationImgIndex = 0;
                 }
             }
@@ -318,12 +323,11 @@ void handleMouse(bool is_mouse_over_ui) {
 }
 
 void handleMouseWheel(GLFWwindow* window, double xoffset, double yoffset) {
-    glm::vec2 delta = getMousePixelPos() - pixelPos;
     zoom = glm::clamp(zoom + zoomStep * (float) yoffset, zoomMin, zoomMax);
-    glm::vec2 delta2 = getMousePixelPos() - pixelPos;
+}
 
-    //make zoom go to mouse pointer
-    setPixelPos(pixelPos + delta2 - delta);
+glm::mat4 getViewMatrix() {
+    return glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenScale, 1.0f));
 }
 
 glm::mat4 getModelMatrix() {
@@ -336,9 +340,10 @@ glm::mat4 getModelMatrix() {
     glm::vec2 canvasPos = pixelPos;
     canvasPos.x *= -1;
 
-    modelMatrix = glm::translate(glm::mat4{}, glm::vec3(glm::round(canvasPos), 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
-    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenScale, 1.0f)) * modelMatrix;
+    glm::vec2 screenPos = glm::round(canvasPos) + glm::vec2(-0.5, 0.5);
 
+    modelMatrix = glm::translate(glm::mat4{}, glm::vec3(screenPos, 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
+//    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenScale, 1.0f)) * modelMatrix;
     return modelMatrix;
 }
 
@@ -361,18 +366,27 @@ void updateScreenScale(glm::ivec2 const& windowSize) {
     }
 }
 
-void renderCanvas(Model canvas, glm::mat4 const& modelMatrix) {
+void renderCanvas(Model canvas) {
+    glm::mat4 viewMatrix = getViewMatrix();
+    glm::mat4 canvasModelMatrix = getModelMatrix();
     //render canvas
-    glUseProgram(shaderProgram);
-    GLuint modelLoc = glGetUniformLocation(shaderProgram, "modelMatrix");
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(modelMatrix));
+    glUseProgram(canvasShader);
+    GLuint modelLoc = glGetUniformLocation(canvasShader, "modelMatrix");
+    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(viewMatrix * canvasModelMatrix));
 
     glBindVertexArray(canvas.vao);
     glBindTexture(GL_TEXTURE_2D, loadedImg.handle);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    glBindVertexArray(0);
-    glUseProgram(0);
+    //draw little cursor box around focused pixel
+    if (zoom > 2) {
+        glUseProgram(wirenetShader);
+        modelLoc = glGetUniformLocation(wirenetShader, "modelMatrix");
+        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(viewMatrix));
+
+        glBindVertexArray(canvas.vao);
+        glDrawArrays(GL_LINE_LOOP, 0, 4);
+    }
 }
 
 int main(int argc, char *argv[]) {
@@ -383,7 +397,8 @@ int main(int argc, char *argv[]) {
     // loading actual raytracing shader code (volume.vert, volume.frag)
     // edit volume.frag to define the result of our volume raycaster
     try {
-        shaderProgram = loadShaders(g_file_vertex_shader, g_file_fragment_shader);
+        canvasShader = loadShaders(canvasVertPath, canvasFragPath);
+        wirenetShader = loadShaders(wirenetVertPath, wirenetFragPath);
     }
     catch (std::logic_error &e) {
         //std::cerr << e.what() << std::endl;
@@ -392,6 +407,7 @@ int main(int argc, char *argv[]) {
     }
 
     timelineFiles = getAllFiles(timelineImgDir, ".png");
+    imgNum = (int) timelineFiles.size();
     loadedImg = texture_loader::uploadTexture(timelineImgDir + timelineFiles[currentImgIndex].string());
     Model canvas = createImgQuad();
 
@@ -405,9 +421,9 @@ int main(int argc, char *argv[]) {
 
         if (isTimelineAnimated) {
             animationImgIndex += (float) elapsedTime * animationSpeed;
-            currentImgIndex = glm::clamp((int) animationImgIndex, 0, (int) timelineFiles.size());
+            currentImgIndex = glm::clamp((int) animationImgIndex, 0, imgNum - 1);
 
-            if (currentImgIndex >= timelineFiles.size() - 1) {
+            if (currentImgIndex >= imgNum - 1) {
                 isTimelineAnimated = false;
             }
         }
@@ -424,7 +440,7 @@ int main(int argc, char *argv[]) {
         glClearColor(g_background_color.x, g_background_color.y, g_background_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        renderCanvas(canvas, getModelMatrix());
+        renderCanvas(canvas);
         renderGUI();
 
         glBindTexture(GL_TEXTURE_2D, 0);

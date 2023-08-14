@@ -68,8 +68,8 @@ GLuint loadShaders(std::string const &vs, std::string const &fs) {
 }
 
 std::vector<std::string> imgDataDirs{
-    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/real_timeline/",
-    "C:/Users/Fred Feuerpferd/AppData/Roaming/.minecraft/screenshots/"
+    "C:/Users/kuenz/Desktop/Vis-Project/data/real_timeline/",
+    "C:/Users/kuenz/Desktop/Vis-Project/data/heatmap/"
 };
 
 int currentImgIndex = 0;
@@ -105,7 +105,7 @@ float zoomMin = -0.4;
 float zoom = 0;
 float zoomStep = 0.2f;
 
-int imgMinuteInterval = 60;
+int imgMinuteInterval = 5;
 bool isTimelineAnimated = false;
 float animationSpeed = 10;
 float animationImgIndex = currentImgIndex;
@@ -177,7 +177,7 @@ std::string ConvertToHHMM(int timeInMinutes) {
     int hours = timeInMinutes / 60;
     int minutes = timeInMinutes % 60;
 
-    char formattedTime[6];
+    char formattedTime[7];
     std::sprintf(formattedTime, "%02d:%02d", hours, minutes);
     return formattedTime;
 }

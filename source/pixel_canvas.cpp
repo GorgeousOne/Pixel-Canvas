@@ -20,6 +20,7 @@
 #include <sstream>      // std::stringstream
 #include <stdexcept>
 #include <filesystem>
+#include <sys/stat.h>
 
 ///GLM INCLUDES
 #define GLM_FORCE_RADIANS
@@ -68,12 +69,13 @@ GLuint loadShaders(std::string const &vs, std::string const &fs) {
 }
 
 // paths to directories with different canvas visualizations
-std::vector<std::string> imgDataDirs{
+std::vector<std::string> imgDataDirs {
     "C:/Users/kuenz/Desktop/Vis-Project/data/real_timeline/",
     "C:/Users/kuenz/Desktop/Vis-Project/data/heatmap/"
+    "C:/Users/kuenz/Desktop/Vis-Project/data/thermalmap/"
 };
 //index of visualization image directory to currently render
-int dataViewType = 0;
+int visualizationIndex = 0;
 
 // index of currently displayed image
 int currentImgIndex = 0;
@@ -117,12 +119,17 @@ float zoomStep = 0.2f;
 // interval to number pictures with on slider
 int imgMinuteInterval = 5;
 // check if timelapse is running
-bool isTimelineAnimated = false;
+bool isTimelapseRunning = false;
 // images to advance per second during timelapse
 float animationSpeed = 100;
 // continuous image index for animation
 float animationImgIndex = currentImgIndex;
 
+//font settings
+std::string fontPath = "../../../framework/extra_fonts/consola.ttf";
+float fontSize = 24.0f;
+float inputFieldWidth = 4 * fontSize;
+ImVec2 spacing = ImVec2(fontSize, 0.5f * fontSize);
 
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
@@ -147,10 +154,6 @@ void updateImGui() {
     // If a mouse press event came, always pass it as "mouse held this frame", so we don't miss click-release events that are shorter than 1 frame.
     io.MouseDown[0] = mousePressed[0] || glfwGetMouseButton(g_win.getGLFWwindow(), GLFW_MOUSE_BUTTON_LEFT) != 0;
     io.MouseDown[1] = mousePressed[1] || glfwGetMouseButton(g_win.getGLFWwindow(), GLFW_MOUSE_BUTTON_RIGHT) != 0;
-
-    // Start the frame
-    //ImGui::NewFrame();
-    ImGui_ImplGlfwGL3_NewFrame();
 }
 
 /**
@@ -168,7 +171,7 @@ void setPixelPos(glm::vec2 const& newPos) {
 void updateImage(bool force) {
     if (force || currentImgIndex != lastImgIndex) {
         glDeleteTextures(1, &loadedImg.handle);
-        loadedImg = texture_loader::uploadTexture(imgDataDirs[dataViewType] + timelineFiles[currentImgIndex].string());
+        loadedImg = texture_loader::uploadTexture(imgDataDirs[visualizationIndex] + timelineFiles[currentImgIndex].string());
         lastImgIndex = currentImgIndex;
     }
 }
@@ -190,12 +193,24 @@ std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) 
 }
 
 /**
+ * Prints error message if file does not exits
+ */
+void printPathExists(std::string path) {
+    std::filesystem::path pathObj(path);
+    if (!std::filesystem::exists(path)) {
+        std::cerr << "Could not find path '" << path << "'\n";
+    }
+}
+
+/**
  * Loads all names of png files in directory of the currently selected view
  */
 void loadImgFiles() {
-    timelineFiles = getAllFiles(imgDataDirs[dataViewType], ".png");
+    printPathExists(imgDataDirs[visualizationIndex]);
+    timelineFiles = getAllFiles(imgDataDirs[visualizationIndex], ".png");
     maxImgIndex = (int) timelineFiles.size() - 1;
     updateImage(true);
+    isTimelapseRunning = false;
 }
 
 /**
@@ -210,29 +225,26 @@ std::string ConvertToHHMM(int timeInMinutes) {
     return formattedTime;
 }
 
-void showGUI() {
-    int numTextLines = 9;
-    float height = ImGui::GetTextLineHeightWithSpacing() * numTextLines;
-
-    ImGui::SetNextWindowSize(ImVec2(400, height));
+/**
+ * Render all gui elements
+ */
+void showGUI(ImFont* font) {
+    ImGui::PushFont(font);
     ImGui::Begin("Timeline", nullptr);
     is_mouse_over_gui = ImGui::IsMouseHoveringAnyWindow();
 
     //timeline slider
     ImGui::Text("Time since July 20th 13:00 UTC");
-    ImGui::PushItemWidth(350);
     bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, maxImgIndex, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
-    ImGui::PopItemWidth();
 
     // stop animation when time slider clicked
     if (didSliderMove) {
-        isTimelineAnimated = false;
+        isTimelapseRunning = false;
     }
     // coordinate viewer / selector
     ImGui::Text("x");
     ImGui::SameLine();
 
-    float inputFieldWidth = 40.0f;
     ImGui::PushItemWidth(inputFieldWidth);
 
     //input fields for coordinates
@@ -266,15 +278,20 @@ void showGUI() {
     ImGui::Text("Animation speed:");
     ImGui::SliderFloat("##SpeedSlider", &animationSpeed, 4, 100, oss.str().c_str());
 
-    //view selector
-    if (ImGui::RadioButton("Default", &dataViewType, 0)) {
+    //visualization radio button selection
+    if (ImGui::RadioButton("Default", &visualizationIndex, 0)) {
         loadImgFiles();
     }
     ImGui::SameLine();
-    if (ImGui::RadioButton("Heatmap", &dataViewType, 1)) {
+    if (ImGui::RadioButton("Heat map", &visualizationIndex, 1)) {
+        loadImgFiles();
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("Thermal map", &visualizationIndex, 2)) {
         loadImgFiles();
     }
     ImGui::End();
+    ImGui::PopFont();
 }
 
 void handleUIInput() {
@@ -290,38 +307,42 @@ void handleUIInput() {
         }
         //move 1 image forward / backward
         if (ImGui::IsKeyPressed(GLFW_KEY_LEFT)) {
-            isTimelineAnimated = false;
+            isTimelapseRunning = false;
             currentImgIndex = glm::max(0, currentImgIndex - 1);
         }
         if (ImGui::IsKeyPressed(GLFW_KEY_RIGHT)) {
-            isTimelineAnimated = false;
+            isTimelapseRunning = false;
             currentImgIndex = glm::min(maxImgIndex, currentImgIndex + 1);
         }
 
         //toggle timeline animation
         if (ImGui::IsKeyPressed(GLFW_KEY_SPACE, false)) {
-            isTimelineAnimated = !isTimelineAnimated;
+            isTimelapseRunning = !isTimelapseRunning;
             animationImgIndex = currentImgIndex;
 
             //reset if at end of images
-            if (isTimelineAnimated && currentImgIndex >= maxImgIndex) {
+            if (isTimelapseRunning && currentImgIndex >= maxImgIndex) {
                 animationImgIndex = 0;
             }
         }
     }
 }
 
-void renderGUI() {
+void renderGUI(ImFont* font) {
     //IMGUI ROUTINE begin
     ImGuiIO &io = ImGui::GetIO();
     io.MouseWheel = 0;
     mousePressed[0] = mousePressed[1] = false;
     glfwPollEvents();
     updateImGui();
-    showGUI();
+
+    // Start the frame
+    //ImGui::NewFrame();
+    ImGui_ImplGlfwGL3_NewFrame();
+    showGUI(font);
 
     // Rendering
-    glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
+    //glViewport(0, 0, (int) io.DisplaySize.x, (int) io.DisplaySize.y);
     ImGui::Render();
     //IMGUI ROUTINE end
 }
@@ -498,17 +519,23 @@ int main(int argc, char *argv[]) {
     Model canvas = createImgQuad();
     double previousTime = glfwGetTime();
 
+    //customize font
+    printPathExists(fontPath.c_str());
+    ImGuiIO &io = ImGui::GetIO();
+    ImFont* bigFont = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), fontSize);
+    ImGui::GetStyle().ItemSpacing = spacing;
+
     while (!g_win.shouldClose()) {
         double currentTime = glfwGetTime();
         double elapsedTime = currentTime - previousTime;
 
         // advance image during animation
-        if (isTimelineAnimated) {
+        if (isTimelapseRunning) {
             animationImgIndex += (float) elapsedTime * animationSpeed;
             currentImgIndex = glm::clamp((int) animationImgIndex, 0, maxImgIndex);
 
             if (currentImgIndex >= maxImgIndex) {
-                isTimelineAnimated = false;
+                isTimelapseRunning = false;
             }
         }
         previousTime = currentTime;
@@ -527,7 +554,7 @@ int main(int argc, char *argv[]) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         renderCanvas(canvas);
-        renderGUI();
+        renderGUI(bigFont);
 
         glBindTexture(GL_TEXTURE_2D, 0);
         g_win.update();

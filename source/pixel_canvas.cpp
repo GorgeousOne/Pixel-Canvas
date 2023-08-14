@@ -67,15 +67,23 @@ GLuint loadShaders(std::string const &vs, std::string const &fs) {
     return createProgram(v, f);
 }
 
+// paths to directories with different canvas visualizations
 std::vector<std::string> imgDataDirs{
     "C:/Users/kuenz/Desktop/Vis-Project/data/real_timeline/",
     "C:/Users/kuenz/Desktop/Vis-Project/data/heatmap/"
 };
+//index of visualization image directory to currently render
+int dataViewType = 0;
 
+// index of currently displayed image
 int currentImgIndex = 0;
+// backup to determine if image index was changed
 int lastImgIndex = -1;
+// strings of all files of the current displayed view
 std::vector<fs::path> timelineFiles;
+// iteration end index
 int maxImgIndex = -1;
+// currently displayed texture
 Texture loadedImg;
 
 // set backgorund color here
@@ -103,14 +111,18 @@ glm::vec2 lastMousePos{};
 float zoomMax = 6;
 float zoomMin = -0.4;
 float zoom = 0;
+//determines how fine-grained zoom is when scrolling
 float zoomStep = 0.2f;
 
+// interval to number pictures with on slider
 int imgMinuteInterval = 5;
+// check if timelapse is running
 bool isTimelineAnimated = false;
-float animationSpeed = 10;
+// images to advance per second during timelapse
+float animationSpeed = 100;
+// continuous image index for animation
 float animationImgIndex = currentImgIndex;
 
-int dataViewType = 0;
 
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
@@ -141,11 +153,18 @@ void updateImGui() {
     ImGui_ImplGlfwGL3_NewFrame();
 }
 
+/**
+ * Changes the focused pixel (which translates the canvas)
+ */
 void setPixelPos(glm::vec2 const& newPos) {
     glm::vec2 border {loadedImg.width, loadedImg.height};
     pixelPos = glm::clamp(newPos, -0.5f * border, 0.5f * border - glm::vec2(1));
 }
 
+/**
+ * Loads a new image if the the image index changed
+ * @param force forces loading a new image
+ */
 void updateImage(bool force) {
     if (force || currentImgIndex != lastImgIndex) {
         glDeleteTextures(1, &loadedImg.handle);
@@ -154,6 +173,9 @@ void updateImage(bool force) {
     }
 }
 
+/**
+ * Returns all file names with a certain extension in a directory
+ */
 std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) {
     std::vector<fs::path> paths;
 
@@ -167,12 +189,18 @@ std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) 
     return paths;
 }
 
+/**
+ * Loads all names of png files in directory of the currently selected view
+ */
 void loadImgFiles() {
     timelineFiles = getAllFiles(imgDataDirs[dataViewType], ".png");
     maxImgIndex = (int) timelineFiles.size() - 1;
     updateImage(true);
 }
 
+/**
+ * Converts minutes to hh:mm format
+ */
 std::string ConvertToHHMM(int timeInMinutes) {
     int hours = timeInMinutes / 60;
     int minutes = timeInMinutes % 60;
@@ -298,11 +326,18 @@ void renderGUI() {
     //IMGUI ROUTINE end
 }
 
+/**
+ * Struct for storing geometric model opengl handles
+ */
 struct Model {
     GLuint vao;
     GLuint vbo;
 };
 
+/**
+ * Creates a 1x1 unit square uploaded to opengl
+ * @return
+ */
 Model createImgQuad() {
     // Set up vertex data
     Model model;
@@ -331,17 +366,28 @@ Model createImgQuad() {
     return model;
 }
 
+/**
+ * Returns where the cursor is in canvas pixel space
+ */
 glm::vec2 getMousePixelPos() {
+    // unstretch mouse pos and scale to canvas size
     glm::vec2 mousePos = g_win.mousePosition() * screenScale * 2.0f - screenScale;
+    // apply zoom
     mousePos /= glm::pow(2.0f, zoom);
+    // flip x idk
     mousePos.x *= -1;
     return mousePos;
 }
 
+/**
+ * Handles mouse user input
+ * @param is_mouse_over_ui
+ */
 void handleMouse(bool is_mouse_over_ui) {
-    glm::vec2 mousePos = g_win.mousePosition() * screenScale * 2.0f / glm::pow(2.0f, zoom);
-    mousePos.x *= -1;
+    // transform mouse position to canvas pixel space
+    glm::vec2 mousePos = getMousePixelPos();
 
+    // translate canvas on LMB drag
     if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT)) {
         if (!was_mouse_down && !is_mouse_over_ui) {
             is_canvas_pressed = true;
@@ -357,14 +403,23 @@ void handleMouse(bool is_mouse_over_ui) {
     lastMousePos = mousePos;
 }
 
+/**
+ * Handle mouse wheel input for zooming
+ */
 void handleMouseWheel(GLFWwindow* window, double xoffset, double yoffset) {
     zoom = glm::clamp(zoom + zoomStep * (float) yoffset, zoomMin, zoomMax);
 }
 
+/**
+ * Creates matrix to scale screen to canvas pixel space
+ */
 glm::mat4 getViewMatrix() {
     return glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenScale, 1.0f));
 }
 
+/**
+ * Creates matrix that stretches 1x1 square to width x height pixels for image
+ */
 glm::mat4 getModelMatrix() {
     //1 - (-1) = 2
     //idk scale camera to un-stretch window but also stretch canvas squad to image rect
@@ -382,10 +437,13 @@ glm::mat4 getModelMatrix() {
     return modelMatrix;
 }
 
+/**
+ * Adapt screen scale to fit canvas pixel size by default zoom
+ */
 void updateScreenScale(glm::ivec2 const& windowSize) {
     float screenAspect = (float) windowSize.x / (float) windowSize.y;
     float canvasAspect = (float) loadedImg.width / (float) loadedImg.height;
-    // make screen scaling fit canvas
+    // adapt to either canvas width or height depending on whether window is wider or narrower than canvas
     if (screenAspect > canvasAspect) {
         screenScale = glm::vec2(0.5f * screenAspect * loadedImg.height, 0.5f * loadedImg.height);
     } else {
@@ -393,6 +451,9 @@ void updateScreenScale(glm::ivec2 const& windowSize) {
     }
 }
 
+/**
+ * Renders canvas with loaded image data
+ */
 void renderCanvas(Model canvas) {
     glm::mat4 viewMatrix = getViewMatrix();
     glm::mat4 canvasModelMatrix = getModelMatrix();
@@ -421,13 +482,11 @@ int main(int argc, char *argv[]) {
     ImGui_ImplGlfwGL3_Init(g_win.getGLFWwindow(), true);
     glfwSetScrollCallback(g_win.getGLFWwindow(), handleMouseWheel);
 
-    // loading actual raytracing shader code (volume.vert, volume.frag)
-    // edit volume.frag to define the result of our volume raycaster
+    // load shaders to display canvas & pixel cursor
     try {
         canvasShader = loadShaders(canvasVertPath, canvasFragPath);
         wirenetShader = loadShaders(wirenetVertPath, wirenetFragPath);
-    }
-    catch (std::logic_error &e) {
+    } catch (std::logic_error &e) {
         //std::cerr << e.what() << std::endl;
         std::stringstream ss;
         ss << e.what() << std::endl;
@@ -437,15 +496,13 @@ int main(int argc, char *argv[]) {
     updateImage(true);
 
     Model canvas = createImgQuad();
-
     double previousTime = glfwGetTime();
 
-    // manage keys here
-    // add new input if neccessary (ie changing sampling distance, isovalues, ...)
     while (!g_win.shouldClose()) {
         double currentTime = glfwGetTime();
         double elapsedTime = currentTime - previousTime;
 
+        // advance image during animation
         if (isTimelineAnimated) {
             animationImgIndex += (float) elapsedTime * animationSpeed;
             currentImgIndex = glm::clamp((int) animationImgIndex, 0, maxImgIndex);
@@ -456,6 +513,7 @@ int main(int argc, char *argv[]) {
         }
         previousTime = currentTime;
 
+        //load new image if image index changed
         updateImage(false);
 
         glm::ivec2 size = g_win.windowSize();
@@ -463,6 +521,7 @@ int main(int argc, char *argv[]) {
         handleUIInput();
         handleMouse(is_mouse_over_gui);
 
+        //clear the screen
         glViewport(0, 0, size.x, size.y);
         glClearColor(g_background_color.x, g_background_color.y, g_background_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

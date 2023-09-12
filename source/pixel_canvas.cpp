@@ -20,7 +20,6 @@
 #include <sstream>      // std::stringstream
 #include <stdexcept>
 #include <filesystem>
-#include <sys/stat.h>
 
 ///GLM INCLUDES
 #define GLM_FORCE_RADIANS
@@ -28,7 +27,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/transform.hpp>
-#include <glm/gtx/string_cast.hpp>
 
 ///PROJECT INCLUDES
 #include <imgui.h>
@@ -38,8 +36,7 @@
 ///IMGUI INCLUDES
 #include <imgui_impl_glfw_gl3.h>
 #include <vector>
-#include <format>
-
+#include <ctime>
 
 //-----------------------------------------------------------------------------
 // Helpers
@@ -214,14 +211,14 @@ void loadImgFiles() {
 }
 
 /**
- * Converts minutes to hh:mm format
+ * Converts minutes to date format
  */
-std::string ConvertToHHMM(int timeInMinutes) {
-    int hours = timeInMinutes / 60;
-    int minutes = timeInMinutes % 60;
+std::string convertToDate(int timeInMinutes) {
+    std::time_t unixTimestamp = 1689858000 + timeInMinutes * 60; // Replace with your timestamp
+    std::tm* timeInfo = localtime(&unixTimestamp);
 
-    char formattedTime[7];
-    std::sprintf(formattedTime, "%02d:%02d", hours, minutes);
+    char formattedTime[80]; // A buffer to store the formatted date
+    std::strftime(formattedTime, sizeof(formattedTime), "%b %d %H:%M", timeInfo);
     return formattedTime;
 }
 
@@ -230,19 +227,19 @@ std::string ConvertToHHMM(int timeInMinutes) {
  */
 void showGUI(ImFont* font) {
     ImGui::PushFont(font);
-    ImGui::Begin("Timeline", nullptr);
+    ImGui::Begin("Timeline:", nullptr);
     is_mouse_over_gui = ImGui::IsMouseHoveringAnyWindow();
 
     //timeline slider
-    ImGui::Text("Time since July 20th 13:00 UTC");
-    bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, maxImgIndex, ConvertToHHMM(currentImgIndex * imgMinuteInterval).c_str());
+    ImGui::Text("Timeline");
+    bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, maxImgIndex, convertToDate(currentImgIndex * imgMinuteInterval).c_str());
 
     // stop animation when time slider clicked
     if (didSliderMove) {
         isTimelapseRunning = false;
     }
     // coordinate viewer / selector
-    ImGui::Text("x");
+    ImGui::Text("x:");
     ImGui::SameLine();
 
     ImGui::PushItemWidth(inputFieldWidth);
@@ -254,7 +251,7 @@ void showGUI(ImFont* font) {
 
     ImGui::PopItemWidth();
     ImGui::SameLine();
-    ImGui::Text("y");
+    ImGui::Text("y:");
     ImGui::SameLine();
     ImGui::PushItemWidth(inputFieldWidth);
 

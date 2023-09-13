@@ -67,9 +67,9 @@ GLuint loadShaders(std::string const &vs, std::string const &fs) {
 
 // paths to directories with different canvas visualizations
 std::vector<std::string> imgDataDirs {
-    "C:/Users/kuenz/Desktop/Vis-Project/data/real_timeline/",
-    "C:/Users/kuenz/Desktop/Vis-Project/data/heatmap/"
-    "C:/Users/kuenz/Desktop/Vis-Project/data/thermal_map/"
+    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/default/",
+    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/heatmap/",
+    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/thermal_map/"
 };
 //index of visualization image directory to currently render
 int visualizationIndex = 0;

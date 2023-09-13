@@ -1,5 +1,7 @@
 # r/place 2023 visualization
 
+![split view of 3 visualization types](./imgs/example.png)  
+
 The r/place Timeline Viewer is the final project for our visualization course. It provides a dynamic and interactive way to explore the evolution of Reddit's r/place 2023 canvas over time. The project allows users to gain insights into how different areas of the canvas were pixelated and how user activity changed over the course of the event.
 
 ## Key Features

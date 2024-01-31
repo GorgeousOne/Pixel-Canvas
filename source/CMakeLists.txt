@@ -2,6 +2,7 @@ file(GLOB_RECURSE FRAMEWORK_SHADER_VERTEX RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *
 file(GLOB_RECURSE FRAMEWORK_SHADER_FRAGME RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.frag)
 
 add_executable(pixel_canvas pixel_canvas.cpp
+		Canvas.h Canvas.cpp
               ${FRAMEWORK_SHADER_VERTEX}
               ${FRAMEWORK_SHADER_FRAGME})
 

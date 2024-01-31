@@ -30,7 +30,7 @@ Window::Window(glm::ivec2 const& windowsize)
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 #endif
 
-  m_window = glfwCreateWindow(windowsize.x, windowsize.y, m_title.c_str(), nullptr, nullptr);
+  m_window = glfwCreateWindow(windowsize.x, windowsize.y, m_title.c_str(), glfwGetPrimaryMonitor(), nullptr);
 
   
   if (m_window) {

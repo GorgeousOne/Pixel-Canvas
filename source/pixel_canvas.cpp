@@ -12,20 +12,16 @@
 #endif
 
 #include "fensterchen.hpp"
-#include "texture_loader.hpp"
 #include "utils.hpp"
+#include "Canvas.h"
 
 #include <string>
 #include <iostream>
-#include <sstream>      // std::stringstream
-#include <stdexcept>
 #include <filesystem>
 
 ///GLM INCLUDES
 #define GLM_FORCE_RADIANS
 
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/transform.hpp>
 
 ///PROJECT INCLUDES
@@ -53,20 +49,8 @@
 
 namespace fs = std::filesystem;
 
-const std::string canvasVertPath("../../../source/shader/image_display.vert");
-const std::string canvasFragPath("../../../source/shader/image_display.frag");
-
-const std::string wirenetVertPath("../../../source/shader/wirenet.vert");
-const std::string wirenetFragPath("../../../source/shader/wirenet.frag");
-
-GLuint loadShaders(std::string const &vs, std::string const &fs) {
-    std::string v = readFile(vs);
-    std::string f = readFile(fs);
-    return createProgram(v, f);
-}
-
 // paths to directories with different canvas visualizations
-std::vector<std::string> imgDataDirs {
+std::vector<std::string> imageDirs {
     "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/default/",
     "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/heatmap/",
     "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/thermal_map/"
@@ -80,19 +64,13 @@ int currentImgIndex = 0;
 int lastImgIndex = -1;
 // strings of all files of the current displayed view
 std::vector<fs::path> timelineFiles;
-// iteration end index
-int maxImgIndex = -1;
-// currently displayed texture
-Texture loadedImg;
 
 // set backgorund color here
 glm::vec3 g_background_color = glm::vec3(0.08f, 0.08f, 0.08f);   //grey
 
-glm::ivec2 g_window_res = glm::ivec2(1280, 720);
+glm::ivec2 g_window_res = glm::ivec2(1920, 1080);
 Window g_win(g_window_res);
 
-GLuint canvasShader(0);
-GLuint wirenetShader(0);
 
 // imgui variables
 static bool mousePressed[2] = {false, false};
@@ -103,13 +81,8 @@ bool first_frame = true;
 bool was_mouse_down = false;
 bool is_canvas_pressed = false;
 
-glm::vec2 screenScale{};
-glm::vec2 pixelPos{};
 glm::vec2 lastMousePos{};
 
-float zoomMax = 6;
-float zoomMin = -0.4;
-float zoom = 0;
 //determines how fine-grained zoom is when scrolling
 float zoomStep = 0.2f;
 
@@ -118,7 +91,7 @@ int imgMinuteInterval = 5;
 // check if timelapse is running
 bool isTimelapseRunning = false;
 // images to advance per second during timelapse
-float animationSpeed = 100;
+float animationSpeed = 10;
 // continuous image index for animation
 float animationImgIndex = currentImgIndex;
 
@@ -127,6 +100,8 @@ std::string fontPath = "../../../framework/extra_fonts/consola.ttf";
 float fontSize = 24.0f;
 float inputFieldWidth = 4 * fontSize;
 ImVec2 spacing = ImVec2(fontSize, 0.5f * fontSize);
+
+Canvas canvasObject{};
 
 void updateImGui() {
     ImGuiIO &io = ImGui::GetIO();
@@ -157,36 +132,7 @@ void updateImGui() {
  * Changes the focused pixel (which translates the canvas)
  */
 void setPixelPos(glm::vec2 const& newPos) {
-    glm::vec2 border {loadedImg.width, loadedImg.height};
-    pixelPos = glm::clamp(newPos, -0.5f * border, 0.5f * border - glm::vec2(1));
-}
-
-/**
- * Loads a new image if the the image index changed
- * @param force forces loading a new image
- */
-void updateImage(bool force) {
-    if (force || currentImgIndex != lastImgIndex) {
-        glDeleteTextures(1, &loadedImg.handle);
-        loadedImg = texture_loader::uploadTexture(imgDataDirs[visualizationIndex] + timelineFiles[currentImgIndex].string());
-        lastImgIndex = currentImgIndex;
-    }
-}
-
-/**
- * Returns all file names with a certain extension in a directory
- */
-std::vector<fs::path> getAllFiles(fs::path const &root, std::string const &ext) {
-    std::vector<fs::path> paths;
-
-    if (fs::exists(root) && fs::is_directory(root)) {
-        for (auto const &entry: fs::recursive_directory_iterator(root)) {
-            if (fs::is_regular_file(entry) && entry.path().extension() == ext) {
-                paths.emplace_back(entry.path().filename());
-            }
-        }
-    }
-    return paths;
+    canvasObject.setPixelPos(newPos);
 }
 
 /**
@@ -197,17 +143,6 @@ void printPathExists(std::string path) {
     if (!std::filesystem::exists(path)) {
         std::cerr << "Could not find path '" << path << "'\n";
     }
-}
-
-/**
- * Loads all names of png files in directory of the currently selected view
- */
-void loadImgFiles() {
-    printPathExists(imgDataDirs[visualizationIndex]);
-    timelineFiles = getAllFiles(imgDataDirs[visualizationIndex], ".png");
-    maxImgIndex = (int) timelineFiles.size() - 1;
-    updateImage(true);
-    isTimelapseRunning = false;
 }
 
 /**
@@ -232,7 +167,7 @@ void showGUI(ImFont* font) {
 
     //timeline slider
     ImGui::Text("Timeline");
-    bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, maxImgIndex, convertToDate(currentImgIndex * imgMinuteInterval).c_str());
+    bool didSliderMove = ImGui::SliderInt("##timeline-slider", &currentImgIndex, 0, canvasObject.getMaxImgIndex(), convertToDate(currentImgIndex * imgMinuteInterval).c_str());
 
     // stop animation when time slider clicked
     if (didSliderMove) {
@@ -246,7 +181,11 @@ void showGUI(ImFont* font) {
 
     //input fields for coordinates
     char xInputBuffer[32];
-    snprintf(xInputBuffer, sizeof(xInputBuffer), "%d", (int) glm::round(pixelPos.x)); // Convert int to string
+
+    int pixelX = canvasObject.getPixelX();
+    int pixelY = canvasObject.getPixelY();
+
+    snprintf(xInputBuffer, sizeof(xInputBuffer), "%d", pixelX);
     bool xChanged = ImGui::InputText("##ValueInput", xInputBuffer, sizeof(xInputBuffer), ImGuiInputTextFlags_CharsDecimal);
 
     ImGui::PopItemWidth();
@@ -256,16 +195,16 @@ void showGUI(ImFont* font) {
     ImGui::PushItemWidth(inputFieldWidth);
 
     char yInputBuffer[32]; // Buffer for y input text
-    snprintf(yInputBuffer, sizeof(yInputBuffer), "%d", (int) glm::round(pixelPos.y));
+    snprintf(yInputBuffer, sizeof(yInputBuffer), "%d", pixelY);
     bool yChanged = ImGui::InputText("##YInput", yInputBuffer, sizeof(yInputBuffer), ImGuiInputTextFlags_CharsDecimal);
     ImGui::PopItemWidth();
 
     // If user edited the input text, update the value
     if (xChanged) {
-        setPixelPos(glm::vec2(atoi(xInputBuffer), pixelPos.y));
+        setPixelPos(glm::vec2(atoi(xInputBuffer), pixelX));
     }
     if (yChanged) {
-        setPixelPos(glm::vec2(pixelPos.x, atoi(yInputBuffer)));
+        setPixelPos(glm::vec2(pixelX, atoi(yInputBuffer)));
     }
 
     //animation speed
@@ -277,15 +216,21 @@ void showGUI(ImFont* font) {
 
     //visualization radio button selection
     if (ImGui::RadioButton("Default", &visualizationIndex, 0)) {
-        loadImgFiles();
+        //TODO change images in canvas object
+        canvasObject.setVisualizationIndex(0);
+//        loadImgFiles();
     }
     ImGui::SameLine();
     if (ImGui::RadioButton("Heat map", &visualizationIndex, 1)) {
-        loadImgFiles();
+        canvasObject.setVisualizationIndex(1);
+
+//        loadImgFiles();
     }
     ImGui::SameLine();
     if (ImGui::RadioButton("Thermal map", &visualizationIndex, 2)) {
-        loadImgFiles();
+        canvasObject.setVisualizationIndex(2);
+
+//        loadImgFiles();
     }
     ImGui::End();
     ImGui::PopFont();
@@ -299,8 +244,7 @@ void handleUIInput() {
         }
         //reset scaling and canvas movement
         if (ImGui::IsKeyPressed(GLFW_KEY_R)) {
-            zoom = 0;
-            setPixelPos(glm::vec2());
+            canvasObject.reset();
         }
         //move 1 image forward / backward
         if (ImGui::IsKeyPressed(GLFW_KEY_LEFT)) {
@@ -309,7 +253,7 @@ void handleUIInput() {
         }
         if (ImGui::IsKeyPressed(GLFW_KEY_RIGHT)) {
             isTimelapseRunning = false;
-            currentImgIndex = glm::min(maxImgIndex, currentImgIndex + 1);
+            currentImgIndex = glm::min(canvasObject.getMaxImgIndex(), currentImgIndex + 1);
         }
 
         //toggle timeline animation
@@ -318,7 +262,7 @@ void handleUIInput() {
             animationImgIndex = currentImgIndex;
 
             //reset if at end of images
-            if (isTimelapseRunning && currentImgIndex >= maxImgIndex) {
+            if (isTimelapseRunning && currentImgIndex >= canvasObject.getMaxImgIndex()) {
                 animationImgIndex = 0;
             }
         }
@@ -345,65 +289,13 @@ void renderGUI(ImFont* font) {
 }
 
 /**
- * Struct for storing geometric model opengl handles
- */
-struct Model {
-    GLuint vao;
-    GLuint vbo;
-};
-
-/**
- * Creates a 1x1 unit square uploaded to opengl
- * @return
- */
-Model createImgQuad() {
-    // Set up vertex data
-    Model model;
-    GLfloat vertices[] = {
-            // Positions        // Texture Coords
-            -0.5f,  0.5f,       0.0f, 0.0f,
-            0.5f,  0.5f,       1.0f, 0.0f,
-            0.5f, -0.5f,       1.0f, 1.0f,
-            -0.5f, -0.5f,       0.0f, 1.0f
-    };
-    glGenVertexArrays(1, &model.vao);
-    glGenBuffers(1, &model.vbo);
-
-    glBindVertexArray(model.vao);
-    glBindBuffer(GL_ARRAY_BUFFER, model.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)(2 * sizeof(GLfloat)));
-
-    glEnableVertexAttribArray(0);
-    glEnableVertexAttribArray(1);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-    return model;
-}
-
-/**
- * Returns where the cursor is in canvas pixel space
- */
-glm::vec2 getMousePixelPos() {
-    // unstretch mouse pos and scale to canvas size
-    glm::vec2 mousePos = g_win.mousePosition() * screenScale * 2.0f - screenScale;
-    // apply zoom
-    mousePos /= glm::pow(2.0f, zoom);
-    // flip x idk
-    mousePos.x *= -1;
-    return mousePos;
-}
-
-/**
  * Handles mouse user input
  * @param is_mouse_over_ui
  */
 void handleMouse(bool is_mouse_over_ui) {
     // transform mouse position to canvas pixel space
-    glm::vec2 mousePos = getMousePixelPos();
+    glm::vec2 mousePos = canvasObject.getPixelPos(g_win.mousePosition());
+//    glm::vec2 mousePos = getMousePixelPos();
 
     // translate canvas on LMB drag
     if (ImGui::IsMouseDown(GLFW_MOUSE_BUTTON_LEFT)) {
@@ -411,7 +303,7 @@ void handleMouse(bool is_mouse_over_ui) {
             is_canvas_pressed = true;
         }
         if (is_canvas_pressed) {
-            setPixelPos(pixelPos + (mousePos - lastMousePos));
+            canvasObject.translate(mousePos - lastMousePos);
         }
         was_mouse_down = true;
     } else {
@@ -425,74 +317,7 @@ void handleMouse(bool is_mouse_over_ui) {
  * Handle mouse wheel input for zooming
  */
 void handleMouseWheel(GLFWwindow* window, double xoffset, double yoffset) {
-    zoom = glm::clamp(zoom + zoomStep * (float) yoffset, zoomMin, zoomMax);
-}
-
-/**
- * Creates matrix to scale screen to canvas pixel space
- */
-glm::mat4 getViewMatrix() {
-    return glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenScale, 1.0f));
-}
-
-/**
- * Creates matrix that stretches 1x1 square to width x height pixels for image
- */
-glm::mat4 getModelMatrix() {
-    //1 - (-1) = 2
-    //idk scale camera to un-stretch window but also stretch canvas squad to image rect
-    glm::vec2 canvasSize{loadedImg.width, loadedImg.height};
-
-    glm::mat4 modelMatrix = glm::mat4(1.0f);
-    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(canvasSize, 1.0f)) * modelMatrix;
-    glm::vec2 canvasPos = pixelPos;
-    canvasPos.x *= -1;
-
-    glm::vec2 screenPos = glm::round(canvasPos) + glm::vec2(-0.5, 0.5);
-
-    modelMatrix = glm::translate(glm::mat4{}, glm::vec3(screenPos, 0.0f)) * modelMatrix; // Adjust xPosition and yPosition
-//    modelMatrix = glm::scale(glm::mat4{}, glm::vec3(glm::vec2(glm::pow(2.0f, zoom)) / screenScale, 1.0f)) * modelMatrix;
-    return modelMatrix;
-}
-
-/**
- * Adapt screen scale to fit canvas pixel size by default zoom
- */
-void updateScreenScale(glm::ivec2 const& windowSize) {
-    float screenAspect = (float) windowSize.x / (float) windowSize.y;
-    float canvasAspect = (float) loadedImg.width / (float) loadedImg.height;
-    // adapt to either canvas width or height depending on whether window is wider or narrower than canvas
-    if (screenAspect > canvasAspect) {
-        screenScale = glm::vec2(0.5f * screenAspect * loadedImg.height, 0.5f * loadedImg.height);
-    } else {
-        screenScale = glm::vec2(0.5f * loadedImg.width, 0.5f * loadedImg.width / screenAspect);
-    }
-}
-
-/**
- * Renders canvas with loaded image data
- */
-void renderCanvas(Model canvas) {
-    glm::mat4 viewMatrix = getViewMatrix();
-    glm::mat4 canvasModelMatrix = getModelMatrix();
-    //render canvas
-    glUseProgram(canvasShader);
-    GLuint modelLoc = glGetUniformLocation(canvasShader, "modelMatrix");
-    glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(viewMatrix * canvasModelMatrix));
-
-    glBindVertexArray(canvas.vao);
-    glBindTexture(GL_TEXTURE_2D, loadedImg.handle);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    //draw little cursor box around focused pixel
-    if (zoom > 2) {
-        glUseProgram(wirenetShader);
-        modelLoc = glGetUniformLocation(wirenetShader, "modelMatrix");
-        glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(viewMatrix));
-
-        glBindVertexArray(canvas.vao);
-        glDrawArrays(GL_LINE_LOOP, 0, 4);
-    }
+    canvasObject.addZoom(zoomStep * (float) yoffset);
 }
 
 int main(int argc, char *argv[]) {
@@ -500,20 +325,12 @@ int main(int argc, char *argv[]) {
     ImGui_ImplGlfwGL3_Init(g_win.getGLFWwindow(), true);
     glfwSetScrollCallback(g_win.getGLFWwindow(), handleMouseWheel);
 
-    // load shaders to display canvas & pixel cursor
-    try {
-        canvasShader = loadShaders(canvasVertPath, canvasFragPath);
-        wirenetShader = loadShaders(wirenetVertPath, wirenetFragPath);
-    } catch (std::logic_error &e) {
-        //std::cerr << e.what() << std::endl;
-        std::stringstream ss;
-        ss << e.what() << std::endl;
-    }
+    //TODO check if window size is correct
+    glm::ivec2 windowSize = g_win.windowSize();
 
-    loadImgFiles();
-    updateImage(true);
+    canvasObject.setImageDirs(imageDirs);
+    canvasObject.updateScreenScale(windowSize);
 
-    Model canvas = createImgQuad();
     double previousTime = glfwGetTime();
 
     //customize font
@@ -529,28 +346,31 @@ int main(int argc, char *argv[]) {
         // advance image during animation
         if (isTimelapseRunning) {
             animationImgIndex += (float) elapsedTime * animationSpeed;
-            currentImgIndex = glm::clamp((int) animationImgIndex, 0, maxImgIndex);
+            currentImgIndex = glm::clamp((int) animationImgIndex, 0, canvasObject.getMaxImgIndex());
 
-            if (currentImgIndex >= maxImgIndex) {
+            if (currentImgIndex >= canvasObject.getMaxImgIndex()) {
                 isTimelapseRunning = false;
             }
         }
         previousTime = currentTime;
 
         //load new image if image index changed
-        updateImage(false);
+        if (currentImgIndex != lastImgIndex) {
+            canvasObject.loadImage(currentImgIndex);
+            lastImgIndex = currentImgIndex;
+        }
+        //TODO add back in if window needs to be resizable
+//        updateScreenScale(size);
 
-        glm::ivec2 size = g_win.windowSize();
-        updateScreenScale(size);
         handleUIInput();
         handleMouse(is_mouse_over_gui);
 
         //clear the screen
-        glViewport(0, 0, size.x, size.y);
+        glViewport(0, 0, windowSize.x, windowSize.y);
         glClearColor(g_background_color.x, g_background_color.y, g_background_color.z, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        renderCanvas(canvas);
+        canvasObject.display();
         renderGUI(bigFont);
 
         glBindTexture(GL_TEXTURE_2D, 0);

@@ -48,7 +48,7 @@ public:
 
     void updateScreenScale(glm::ivec2 windowSize);
 
-    void setImageDirs(std::vector<std::string> &dirList);
+    void setImageDirs(std::vector<std::string> dirList);
 
     void setVisualizationIndex(int i);
 

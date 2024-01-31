@@ -49,12 +49,6 @@
 
 namespace fs = std::filesystem;
 
-// paths to directories with different canvas visualizations
-std::vector<std::string> imageDirs {
-    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/default/",
-    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/heatmap/",
-    "C:/Users/Fred Feuerpferd/git-repos/Vis-Project/data/thermal_map/"
-};
 //index of visualization image directory to currently render
 int visualizationIndex = 0;
 
@@ -62,12 +56,9 @@ int visualizationIndex = 0;
 int currentImgIndex = 0;
 // backup to determine if image index was changed
 int lastImgIndex = -1;
-// strings of all files of the current displayed view
-std::vector<fs::path> timelineFiles;
 
 // set backgorund color here
 glm::vec3 g_background_color = glm::vec3(0.08f, 0.08f, 0.08f);   //grey
-
 glm::ivec2 g_window_res = glm::ivec2(1920, 1080);
 Window g_win(g_window_res);
 
@@ -91,7 +82,7 @@ int imgMinuteInterval = 5;
 // check if timelapse is running
 bool isTimelapseRunning = false;
 // images to advance per second during timelapse
-float animationSpeed = 10;
+float animationSpeed = 20;
 // continuous image index for animation
 float animationImgIndex = currentImgIndex;
 
@@ -215,22 +206,16 @@ void showGUI(ImFont* font) {
     ImGui::SliderFloat("##SpeedSlider", &animationSpeed, 4, 100, oss.str().c_str());
 
     //visualization radio button selection
-    if (ImGui::RadioButton("Default", &visualizationIndex, 0)) {
-        //TODO change images in canvas object
+    if (ImGui::RadioButton("Normal", &visualizationIndex, 0)) {
         canvasObject.setVisualizationIndex(0);
-//        loadImgFiles();
     }
     ImGui::SameLine();
-    if (ImGui::RadioButton("Heat map", &visualizationIndex, 1)) {
+    if (ImGui::RadioButton("Brightness", &visualizationIndex, 1)) {
         canvasObject.setVisualizationIndex(1);
-
-//        loadImgFiles();
     }
     ImGui::SameLine();
-    if (ImGui::RadioButton("Thermal map", &visualizationIndex, 2)) {
+    if (ImGui::RadioButton("Thermal", &visualizationIndex, 2)) {
         canvasObject.setVisualizationIndex(2);
-
-//        loadImgFiles();
     }
     ImGui::End();
     ImGui::PopFont();
@@ -320,6 +305,21 @@ void handleMouseWheel(GLFWwindow* window, double xoffset, double yoffset) {
     canvasObject.addZoom(zoomStep * (float) yoffset);
 }
 
+std::vector<std::string> readImageDirectoryPaths() {
+    if (!std::filesystem::exists("./resource_paths.txt")) {
+        std::cerr << "Could not find ./resource_paths.txt\n";
+    }
+    std::vector<std::string> imageDirs;
+    std::ifstream file("./resource_paths.txt");
+    std::string imageParentDir;
+    std::getline(file, imageParentDir);
+
+    imageDirs.push_back(imageParentDir + "/default/");
+    imageDirs.push_back(imageParentDir + "/heatmap/");
+    imageDirs.push_back(imageParentDir + "/thermal_map/");
+    return imageDirs;
+}
+
 int main(int argc, char *argv[]) {
     //InitImGui();
     ImGui_ImplGlfwGL3_Init(g_win.getGLFWwindow(), true);
@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) {
     //TODO check if window size is correct
     glm::ivec2 windowSize = g_win.windowSize();
 
-    canvasObject.setImageDirs(imageDirs);
+    canvasObject.setImageDirs(readImageDirectoryPaths());
     canvasObject.updateScreenScale(windowSize);
 
     double previousTime = glfwGetTime();
@@ -339,7 +339,7 @@ int main(int argc, char *argv[]) {
     ImFont* bigFont = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), fontSize);
     ImGui::GetStyle().ItemSpacing = spacing;
 
-    while (!g_win.shouldClose()) {
+    while (true) {
         double currentTime = glfwGetTime();
         double elapsedTime = currentTime - previousTime;
 

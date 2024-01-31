@@ -48,7 +48,6 @@ Canvas::Canvas() :
     try {
         canvasShader = loadShaders(canvasVertPath, canvasFragPath);
         wirenetShader = loadShaders(wirenetVertPath, wirenetFragPath);
-        std::cout << "loaded shaders " << canvasShader << " " << wirenetShader << std::endl;
     } catch (std::logic_error &e) {
         //std::cerr << e.what() << std::endl;
         std::stringstream ss;
@@ -199,7 +198,7 @@ void Canvas::updateScreenScale(glm::ivec2 windowSize) {
     }
 }
 
-void Canvas::setImageDirs(std::vector<std::string> &dirList) {
+void Canvas::setImageDirs(std::vector<std::string> dirList) {
     visualizationDirs = dirList;
     for (auto &dir : dirList) {
         visualizationFileNames.emplace_back(getAllFiles(dir, ".png"));
